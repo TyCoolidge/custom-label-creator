@@ -1,0 +1,15 @@
+{
+  "name": "custom-label-creator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node api/index.js",
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongodb": "^6.3.0",
+    "serverless-http": "^3.2.0"
+  }
+}
+
