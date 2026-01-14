@@ -1,5 +1,4 @@
 const express = require("express");
-const path = require("path");
 const { MongoClient, ObjectId } = require("mongodb");
 const serverless = require("serverless-http");
 
@@ -63,12 +62,15 @@ const defaultPresets = [
 
 app.use(express.json());
 
-// Static files (for local development)
-const staticDir = path.join(__dirname, "..");
-app.use(express.static(staticDir));
-app.get("/", (req, res) => {
-	res.sendFile(path.join(staticDir, "index.html"));
-});
+// Static files (for local development only)
+if (process.env.NODE_ENV !== "production") {
+	const path = require("path");
+	const staticDir = path.join(__dirname, "..");
+	app.use(express.static(staticDir));
+	app.get("/", (req, res) => {
+		res.sendFile(path.join(staticDir, "index.html"));
+	});
+}
 
 function stripMongoId(doc) {
 	if (!doc) return doc;
