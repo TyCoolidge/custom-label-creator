@@ -414,104 +414,78 @@ class LabelManager {
 		this.labelPreview.innerHTML = `<div class="preview-formatted">${previewHtml}</div>`;
 	}
 
-	// Build formatted HTML for label (used in preview and rich text copy)
+	// Build formatted HTML for label (used in preview, storage, and rich text copy)
+	// This generates clean, centered FDA-compliant label HTML matching the design spec
 	buildFormattedLabelHtml(label) {
-		const cleanIngredients = this.stripBracketsFromIngredients(label.text);
+		const cleanIngredients = this.stripBracketsFromIngredients(
+			label.text || label.ingredientsText || ""
+		);
 
-		// Ingredients with bold ingredient names before parentheses
+		// Product name - bold, centered (same size as net weight for consistency: 1.1rem)
+		const productNameHtml = label.name
+			? `<div style="text-align: center; font-weight: 700; font-size: 1.1rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${this.escapeHtml(label.name)}</div>`
+			: "";
+
+		// Ingredients with underlined label and bold preset names (not sub-ingredients)
+		// Format: "Preset Name (ingredient1, ingredient2)" - only preset name is bold
 		let ingredientsHtml = "";
 		if (cleanIngredients) {
 			const formattedIngredients =
-				this.formatIngredientsWithBoldNames(cleanIngredients);
-			ingredientsHtml = `
-						<div style="color: #333; line-height: 1.6; margin: 10px 0 12px 0; font-size: 0.9rem; padding-top: 10px; border-top: 1px solid #e0e0e0;">
-							<strong>Ingredients:</strong> ${formattedIngredients}
-						</div>
-					`;
+				this.formatIngredientsWithBoldPresetNames(cleanIngredients);
+			ingredientsHtml = `<div style="text-align: center; line-height: 1.6; margin-bottom: 16px; font-size: 0.55rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><span style="text-decoration: underline; font-weight: 600;">Ingredients:</span> ${formattedIngredients}</div>`;
 		}
 
-		// Allergens block (match label card visual style)
+		// Allergens - bold CONTAINS label, centered (minimum 0.5rem)
 		let allergenHtml = "";
 		if (label.allergens && label.allergens.length > 0) {
-			let allergenText = label.allergens.join(", ");
-			if (label.allergenDetails) {
-				allergenText += ` (${label.allergenDetails})`;
-			}
-			allergenHtml = `
-						<div style="background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 10px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 0.85rem; font-weight: 500;">
-							<strong>CONTAINS:</strong> ${this.escapeHtml(allergenText)}
-						</div>
-					`;
+			const allergenText = label.allergens.join(", ").toUpperCase();
+			allergenHtml = `<div style="text-align: center; font-weight: 700; margin-bottom: 16px; font-size: 0.55rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">CONTAINS: ${this.escapeHtml(allergenText)}</div>`;
 		}
 
-		// Business info (matches label card formatting)
+		// Business info - bold name and address, no comma between name and address
+		// Format: "Business Name Address, City, State Zip" - all bold
 		let businessInfoHtml = "";
 		if (label.businessName) {
-			const addressParts = [
-				label.businessAddress,
+			// Build address: no comma between business name and street address
+			let addressStr = label.businessName;
+			if (label.businessAddress) {
+				addressStr += " " + label.businessAddress; // No comma between name and address
+			}
+			// City, State, Zip with commas
+			const cityStateZip = [
 				label.businessCity,
 				label.businessState,
 				label.businessZip,
 			]
 				.filter((p) => p)
 				.join(", ");
-			const phoneStr = label.businessPhone ? ` ` : "";
-			businessInfoHtml = `
-					<div style="color: #555; font-size: 0.85rem; margin-bottom: 12px; line-height: 1.5;">
-						<strong>${this.escapeHtml(label.businessName)}</strong>  ${this.escapeHtml(addressParts)}${phoneStr}
-					</div>
-				`;
+			if (cityStateZip) {
+				addressStr += ", " + cityStateZip;
+			}
+			businessInfoHtml = `<div style="text-align: center; font-weight: 700; font-size: 0.55rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${this.escapeHtml(addressStr)}</div>`;
 		}
 
-		// Net quantity badge
+		// Net weight - bold, centered (same size as product name: 1.1rem)
 		let netQuantityHtml = "";
 		if (label.netQuantity) {
-			netQuantityHtml = `
-						<div style="background: #2c3e50; color: #ffffff; padding: 6px 12px; border-radius: 4px; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">
-							<strong>Net Wt.</strong> ${this.escapeHtml(
-								label.netQuantity
-							)} ${this.escapeHtml(label.netQuantityUnit || "oz")}
-						</div>
-					`;
+			netQuantityHtml = `<div style="text-align: center; font-weight: 700; font-size: 1.1rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Net Wt. ${this.escapeHtml(label.netQuantity)} ${this.escapeHtml(label.netQuantityUnit || "oz")}</div>`;
 		}
 
-		// Cottage disclaimer
+		// Cottage food disclaimer - bold, all caps, centered (minimum 0.5rem)
 		let cottageHtml = "";
 		if (label.includeCottageDisclaimer) {
-			cottageHtml = `
-						<div style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px 12px; border-radius: 4px; font-size: 0.75rem; color: #666; text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
-							MADE IN A COTTAGE FOOD OPERATION THAT IS NOT SUBJECT TO GOVERNMENT FOOD SAFETY INSPECTION
-						</div>
-					`;
+			cottageHtml = `<div style="text-align: center; font-weight: 700; font-size: 0.5rem; text-transform: uppercase; letter-spacing: 0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">MADE IN A COTTAGE FOOD OPERATION THAT IS NOT SUBJECT TO GOVERNMENT FOOD SAFETY INSPECTION</div>`;
 		}
 
-		// Header with product name + quantity (matches label card layout)
-		const headerHtml = `
-						<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; border-bottom: 3px solid #2c3e50; padding-bottom: 12px; margin-bottom: 12px;">
-							<div style="color: #2c3e50; font-weight: 700; font-size: 1.3rem; flex: 1;">
-								${this.escapeHtml(label.name || "")}
-							</div>
-							${netQuantityHtml}
-						</div>
-					`;
+		// Combine all sections - clean, minimal design
+		const labelHtml = `<div style="background: #ffffff; padding: 24px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto;">${productNameHtml}${ingredientsHtml}${allergenHtml}${businessInfoHtml}${netQuantityHtml}${cottageHtml}</div>`;
 
-		// Outer card container (mirrors .label-card styles)
-		const cardHtml = `
-						<div style="background: #ffffff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 420px;">
-							${headerHtml}
-							${ingredientsHtml}
-							${allergenHtml}
-							${businessInfoHtml}
-							${cottageHtml}
-						</div>
-					`;
-
-		return cardHtml;
+		return labelHtml;
 	}
 
-	// Format ingredients text with bold names before parentheses
+	// Format ingredients with bold preset names only (not sub-ingredients in parentheses)
 	// e.g. "Cookie Mix (flour, sugar), Butter" -> "<strong>Cookie Mix</strong> (flour, sugar), <strong>Butter</strong>"
-	formatIngredientsWithBoldNames(text) {
+	formatIngredientsWithBoldPresetNames(text) {
 		if (!text) return "";
 
 		// Split by comma, but not commas inside parentheses
@@ -531,15 +505,15 @@ class LabelManager {
 		}
 		if (current.trim()) parts.push(current.trim());
 
-		// Format each part: bold the name before parentheses
+		// Format each part: bold only the name before parentheses, not the content inside
 		const formatted = parts.map((part) => {
 			const parenIndex = part.indexOf("(");
 			if (parenIndex > 0) {
 				const name = part.substring(0, parenIndex).trim();
-				const rest = part.substring(parenIndex);
-				return `<strong>${this.escapeHtml(name)}</strong> ${this.escapeHtml(rest)}`;
+				const rest = part.substring(parenIndex); // Keep parenthetical content as-is (not escaped, preserves formatting)
+				return `<strong>${this.escapeHtml(name)}</strong> ${rest}`;
 			}
-			// No parentheses - just bold the whole ingredient
+			// No parentheses - bold the whole ingredient
 			return `<strong>${this.escapeHtml(part)}</strong>`;
 		});
 
@@ -1014,12 +988,28 @@ class LabelManager {
 		return allIngredients;
 	}
 
-	// Build formatted label text with preset sections: Ingredient (sub ingredients)
+	// Build formatted label text with preset sections: PresetName (ingredient1, ingredient2)
 	buildFormattedLabelText() {
-		// For preview and saved label text, use a flat, plain list of ingredients
-		// (no grouping by preset name) so the label text remains simple.
-		const allIngredients = this.collectAllIngredients();
-		return allIngredients.join(", ");
+		const parts = [];
+
+		// Get ingredients from selected presets in format: PresetName (ingredient1, ingredient2)
+		const selectedPresetIds = this.getSelectedPresets();
+		selectedPresetIds.forEach((presetId) => {
+			const preset = this.getPresetById(presetId);
+			if (preset && preset.ingredients.length > 0) {
+				const ingredientsList = preset.ingredients.join(", ");
+				parts.push(`${preset.name} (${ingredientsList})`);
+			}
+		});
+
+		// Get additional manual ingredients (added as standalone items)
+		const additionalText = this.additionalIngredients.value.trim();
+		if (additionalText) {
+			const additionalItems = this.parseIngredients(additionalText);
+			parts.push(...additionalItems);
+		}
+
+		return parts.join(", ");
 	}
 
 	// Form validation
@@ -1526,7 +1516,7 @@ class LabelManager {
 		let ingredientsSection = "";
 		if (cleanIngredients) {
 			const formattedIngredients =
-				this.formatIngredientsWithBoldNames(cleanIngredients);
+				this.formatIngredientsWithBoldPresetNames(cleanIngredients);
 			ingredientsSection = `
 					<div class="label-ingredients">
 						<strong>Ingredients:</strong> ${formattedIngredients}

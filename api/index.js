@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const serverless = require("serverless-http");
 
 const app = express();
@@ -74,7 +74,7 @@ app.get("/", (req, res) => {
 function stripMongoId(doc) {
 	if (!doc) return doc;
 	const { _id, ...rest } = doc;
-	return rest;
+	return { id: _id.toString(), ...rest };
 }
 
 // ===== LABELS =====
@@ -99,10 +99,8 @@ app.post("/api/labels", async (req, res) => {
 		const input = req.body || {};
 		const now = new Date().toISOString();
 		const label = {
-			id: input.id || Date.now().toString(),
 			name: input.name || "",
 			text: input.text || "",
-			color: input.color || "#3498db",
 			creationMode: input.creationMode || "manual",
 			selectedPresetIds: input.selectedPresetIds || [],
 			additionalIngredientsText: input.additionalIngredientsText || "",
@@ -112,16 +110,11 @@ app.post("/api/labels", async (req, res) => {
 			netQuantityUnit: input.netQuantityUnit || "oz",
 			allergens: input.allergens || [],
 			allergenDetails: input.allergenDetails || "",
-			businessName: input.businessName || "",
-			businessAddress: input.businessAddress || "",
-			businessCity: input.businessCity || "",
-			businessState: input.businessState || "",
-			businessZip: input.businessZip || "",
-			businessPhone: input.businessPhone || "",
+			businessId: input.businessId || "",
 			includeCottageDisclaimer: !!input.includeCottageDisclaimer,
 		};
 		await db.collection("labels").insertOne(label);
-		res.status(201).json(label);
+		res.status(201).json(stripMongoId(label));
 	} catch (err) {
 		console.error("POST /api/labels error", err);
 		res.status(500).json({ error: "Failed to create label" });
@@ -135,10 +128,13 @@ app.put("/api/labels/:id", async (req, res) => {
 			...(req.body || {}),
 			updatedAt: new Date().toISOString(),
 		};
+		// Remove fields that shouldn't be updated
+		delete updates._id;
+		delete updates.id;
 		const result = await db
 			.collection("labels")
 			.findOneAndUpdate(
-				{ id: req.params.id },
+				{ _id: new ObjectId(req.params.id) },
 				{ $set: updates },
 				{ returnDocument: "after" }
 			);
@@ -156,7 +152,7 @@ app.delete("/api/labels/:id", async (req, res) => {
 		const db = await getDb();
 		const result = await db
 			.collection("labels")
-			.deleteOne({ id: req.params.id });
+			.deleteOne({ _id: new ObjectId(req.params.id) });
 		if (!result.deletedCount)
 			return res.status(404).json({ error: "Label not found" });
 		res.json({ success: true });
