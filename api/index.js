@@ -7,13 +7,18 @@ const MONGODB_URI =
 	process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/label_creator";
 const DB_NAME = process.env.MONGODB_DB || "test";
 
-let dbPromise;
-function getDb() {
-	if (!dbPromise) {
-		const client = new MongoClient(MONGODB_URI);
-		dbPromise = client.connect().then((c) => c.db(DB_NAME));
+let cachedDb = null;
+async function getDb() {
+	if (cachedDb) {
+		return cachedDb;
 	}
-	return dbPromise;
+	const client = new MongoClient(MONGODB_URI, {
+		serverSelectionTimeoutMS: 5000,
+		connectTimeoutMS: 10000,
+	});
+	await client.connect();
+	cachedDb = client.db(DB_NAME);
+	return cachedDb;
 }
 
 const defaultPresets = [
