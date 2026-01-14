@@ -308,6 +308,15 @@ class LabelManager {
 			}
 		});
 
+		// Help tab navigation listeners
+		this.helpTabButtons = document.querySelectorAll(".help-tab-btn");
+		this.helpTabPanels = document.querySelectorAll(".help-tab-panel");
+		this.helpTabButtons.forEach((btn) => {
+			btn.addEventListener("click", () =>
+				this.switchHelpTab(btn.dataset.helpTab)
+			);
+		});
+
 		// Tab navigation listeners
 		this.tabButtons.forEach((btn) => {
 			btn.addEventListener("click", () => this.switchTab(btn.dataset.tab));
@@ -364,6 +373,19 @@ class LabelManager {
 		document.body.style.overflow = "";
 	}
 
+	// Switch active help tab
+	switchHelpTab(tabId) {
+		// Update button states
+		this.helpTabButtons.forEach((btn) => {
+			btn.classList.toggle("active", btn.dataset.helpTab === tabId);
+		});
+
+		// Update panel visibility
+		this.helpTabPanels.forEach((panel) => {
+			panel.classList.toggle("active", panel.id === `help-tab-${tabId}`);
+		});
+	}
+
 	// Update the label preview based on current form values
 	// Shows formatted HTML preview
 	updatePreview() {
@@ -416,30 +438,41 @@ class LabelManager {
 
 	// Build formatted HTML for label (used in preview, storage, and rich text copy)
 	// This generates clean, centered FDA-compliant label HTML matching the design spec
+	// FDA Requirements: minimum 8pt font, consistent single-line spacing
+	// Uses pt units for proper Google Docs/rich text compatibility
 	buildFormattedLabelHtml(label) {
 		const cleanIngredients = this.stripBracketsFromIngredients(
 			label.text || label.ingredientsText || ""
 		);
 
-		// Product name - bold, centered (same size as net weight for consistency: 1.1rem)
+		// Consistent spacing between sections (8px single-line spacing)
+		const sectionMargin = "margin-bottom: 8px;";
+		const fontFamily =
+			"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
+
+		// Font sizes in pt for proper rich text/Google Docs compatibility
+		const largeFontSize = "font-size: 14pt;"; // Product name & net weight
+		const smallFontSize = "font-size: 8pt;"; // FDA minimum for other text
+
+		// Product name - bold, centered (same size as net weight for consistency)
 		const productNameHtml = label.name
-			? `<div style="text-align: center; font-weight: 700; font-size: 1.1rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${this.escapeHtml(label.name)}</div>`
+			? `<div style="text-align: center; font-weight: 700; ${largeFontSize} ${sectionMargin} ${fontFamily}">${this.escapeHtml(label.name)}</div>`
 			: "";
 
-		// Ingredients with underlined label and bold preset names (not sub-ingredients)
+		// Ingredients with underlined AND bold "Ingredients:" label, bold preset names (not sub-ingredients)
 		// Format: "Preset Name (ingredient1, ingredient2)" - only preset name is bold
 		let ingredientsHtml = "";
 		if (cleanIngredients) {
 			const formattedIngredients =
 				this.formatIngredientsWithBoldPresetNames(cleanIngredients);
-			ingredientsHtml = `<div style="text-align: center; line-height: 1.6; margin-bottom: 16px; font-size: 0.55rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><span style="text-decoration: underline; font-weight: 600;">Ingredients:</span> ${formattedIngredients}</div>`;
+			ingredientsHtml = `<div style="text-align: center; line-height: 1.6; ${sectionMargin} ${smallFontSize} ${fontFamily}"><span style="text-decoration: underline; font-weight: 700;">Ingredients:</span> ${formattedIngredients}</div>`;
 		}
 
-		// Allergens - bold CONTAINS label, centered (minimum 0.5rem)
+		// Allergens - bold CONTAINS label, centered (8pt minimum)
 		let allergenHtml = "";
 		if (label.allergens && label.allergens.length > 0) {
 			const allergenText = label.allergens.join(", ").toUpperCase();
-			allergenHtml = `<div style="text-align: center; font-weight: 700; margin-bottom: 16px; font-size: 0.55rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">CONTAINS: ${this.escapeHtml(allergenText)}</div>`;
+			allergenHtml = `<div style="text-align: center; font-weight: 700; ${sectionMargin} ${smallFontSize} ${fontFamily}">CONTAINS: ${this.escapeHtml(allergenText)}</div>`;
 		}
 
 		// Business info - bold name and address, no comma between name and address
@@ -462,23 +495,23 @@ class LabelManager {
 			if (cityStateZip) {
 				addressStr += ", " + cityStateZip;
 			}
-			businessInfoHtml = `<div style="text-align: center; font-weight: 700; font-size: 0.55rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${this.escapeHtml(addressStr)}</div>`;
+			businessInfoHtml = `<div style="text-align: center; font-weight: 700; ${smallFontSize} ${sectionMargin} ${fontFamily}">${this.escapeHtml(addressStr)}</div>`;
 		}
 
-		// Net weight - bold, centered (same size as product name: 1.1rem)
+		// Net weight - bold, centered (same size as product name)
 		let netQuantityHtml = "";
 		if (label.netQuantity) {
-			netQuantityHtml = `<div style="text-align: center; font-weight: 700; font-size: 1.1rem; margin-bottom: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Net Wt. ${this.escapeHtml(label.netQuantity)} ${this.escapeHtml(label.netQuantityUnit || "oz")}</div>`;
+			netQuantityHtml = `<div style="text-align: center; font-weight: 700; ${largeFontSize} ${sectionMargin} ${fontFamily}">Net Wt. ${this.escapeHtml(label.netQuantity)} ${this.escapeHtml(label.netQuantityUnit || "oz")}</div>`;
 		}
 
-		// Cottage food disclaimer - bold, all caps, centered (minimum 0.5rem)
+		// Cottage food disclaimer - bold, all caps, centered (8pt minimum)
 		let cottageHtml = "";
 		if (label.includeCottageDisclaimer) {
-			cottageHtml = `<div style="text-align: center; font-weight: 700; font-size: 0.5rem; text-transform: uppercase; letter-spacing: 0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">MADE IN A COTTAGE FOOD OPERATION THAT IS NOT SUBJECT TO GOVERNMENT FOOD SAFETY INSPECTION</div>`;
+			cottageHtml = `<div style="text-align: center; font-weight: 700; ${smallFontSize} text-transform: uppercase; letter-spacing: 0.3px; ${fontFamily}">MADE IN A COTTAGE FOOD OPERATION THAT IS NOT SUBJECT TO GOVERNMENT FOOD SAFETY INSPECTION</div>`;
 		}
 
-		// Combine all sections - clean, minimal design
-		const labelHtml = `<div style="background: #ffffff; padding: 24px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto;">${productNameHtml}${ingredientsHtml}${allergenHtml}${businessInfoHtml}${netQuantityHtml}${cottageHtml}</div>`;
+		// Combine all sections - clean, minimal design with consistent spacing
+		const labelHtml = `<div style="background: #ffffff; padding: 24px; ${fontFamily} max-width: 500px; margin: 0 auto;">${productNameHtml}${ingredientsHtml}${allergenHtml}${businessInfoHtml}${netQuantityHtml}${cottageHtml}</div>`;
 
 		return labelHtml;
 	}

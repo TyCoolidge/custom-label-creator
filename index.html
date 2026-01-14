@@ -296,83 +296,141 @@
 
         <!-- Help Modal -->
         <div id="help-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
+            <div class="modal-content help-modal-content">
                 <div class="modal-header">
                     <h2>📖 How to Use Label Creator</h2>
                     <button type="button" class="modal-close" id="help-close">&times;</button>
                 </div>
-                <div class="modal-body">
-                    <section class="help-section">
-                        <h3>🧩 Creating Presets</h3>
-                        <p>Presets are reusable ingredient groups. Click <strong>"+ New Preset"</strong> in the
-                            Ingredient
-                            Presets section, give it a name, and enter ingredients separated by commas.</p>
-                    </section>
+                <!-- Help Tab Navigation -->
+                <div class="help-tabs-nav">
+                    <button type="button" class="help-tab-btn active" data-help-tab="quick-start">🚀 Quick
+                        Start</button>
+                    <button type="button" class="help-tab-btn" data-help-tab="setup">🔧 Setup</button>
+                    <button type="button" class="help-tab-btn" data-help-tab="creating">🏷️ Creating</button>
+                    <button type="button" class="help-tab-btn" data-help-tab="managing">📂 Managing</button>
+                    <button type="button" class="help-tab-btn" data-help-tab="fda">📜 FDA Info</button>
+                </div>
+                <div class="modal-body help-modal-body">
+                    <!-- Quick Start Tab -->
+                    <div class="help-tab-panel active" id="help-tab-quick-start">
+                        <section class="help-section">
+                            <h3>🚀 Quick Start Guide</h3>
+                            <p>Label Creator helps you create FDA-compliant food labels for cottage food operations.
+                                Follow these steps:</p>
+                            <ol>
+                                <li><strong>Set up your business info</strong> in the Business tab (required)</li>
+                                <li><strong>Create ingredient presets</strong> in the Presets tab (optional)</li>
+                                <li><strong>Create labels</strong> using presets or manual entry</li>
+                                <li><strong>Copy and use</strong> your formatted labels anywhere</li>
+                            </ol>
+                        </section>
+                    </div>
 
-                    <section class="help-section">
-                        <h3>🏷️ Creating Labels</h3>
-                        <p>You have two modes for creating labels:</p>
-                        <ul>
-                            <li><strong>Manual Entry:</strong> Type ingredients directly into the text area,
-                                separated by
-                                commas.</li>
-                            <li><strong>From Preset:</strong> Select one or more presets to automatically include
-                                their
-                                ingredients.</li>
-                        </ul>
-                    </section>
+                    <!-- Setup Tab -->
+                    <div class="help-tab-panel" id="help-tab-setup">
+                        <section class="help-section">
+                            <h3>🏢 Business Information</h3>
+                            <p>FDA requires your business info on all food labels. <strong>Complete this
+                                    first.</strong></p>
+                            <ol>
+                                <li>Click the <strong>"Business"</strong> tab (shows ❗ if incomplete)</li>
+                                <li>Enter your business name and complete address</li>
+                                <li>Phone number is optional but recommended</li>
+                                <li>Check the cottage food disclaimer box if applicable</li>
+                                <li>Click <strong>"💾 Save Business Info"</strong></li>
+                            </ol>
+                            <p><em>✓ Once saved, the tab shows a checkmark and auto-fills on all labels.</em></p>
+                        </section>
+                        <section class="help-section">
+                            <h3>🧩 Ingredient Presets</h3>
+                            <p>Presets are reusable ingredient groups that save time.</p>
+                            <ol>
+                                <li>Go to the <strong>"Presets"</strong> tab</li>
+                                <li>Click <strong>"+ New Preset"</strong></li>
+                                <li>Enter a name (e.g., "Cookie Base", "Vanilla Frosting")</li>
+                                <li>Enter ingredients separated by commas</li>
+                                <li>Click <strong>"Create Preset"</strong></li>
+                            </ol>
+                            <p><strong>Edit/Delete:</strong> Use ✏️ Edit or 🗑️ Delete buttons on each preset.</p>
+                        </section>
+                    </div>
 
-                    <section class="help-section">
-                        <h3>☑️ Selecting Multiple Presets</h3>
-                        <p>In "From Preset" mode, check multiple preset boxes to combine ingredients from different
-                            presets
-                            into one label.</p>
-                    </section>
+                    <!-- Creating Labels Tab -->
+                    <div class="help-tab-panel" id="help-tab-creating">
+                        <section class="help-section">
+                            <h3>🏷️ Creating Labels</h3>
+                            <p><strong>From Preset Mode (Recommended):</strong></p>
+                            <ol>
+                                <li>Go to <strong>"Create Label"</strong> tab</li>
+                                <li>Enter a <strong>Label Name</strong> (product name)</li>
+                                <li>Set mode to <strong>"From Preset"</strong></li>
+                                <li>Check one or more presets to combine ingredients</li>
+                                <li>Add optional extra ingredients</li>
+                                <li>Enter <strong>Net Quantity</strong> and select <strong>allergens</strong></li>
+                                <li>Click <strong>"Create Label(s)"</strong></li>
+                            </ol>
+                            <p><strong>Manual Entry:</strong> Set mode to "Manual Entry" and type ingredients directly.
+                            </p>
+                        </section>
+                        <section class="help-section">
+                            <h3>👁️ Preview & Copy</h3>
+                            <p>The <strong>Label Preview</strong> shows a live preview as you fill out the form.</p>
+                            <ul>
+                                <li>After creating, click <strong>"📋 Copy"</strong> next to the preview</li>
+                                <li>Label copies as <strong>rich text</strong> with formatting preserved</li>
+                                <li>Paste into Google Docs, Word, Canva, or any rich text editor</li>
+                            </ul>
+                        </section>
+                    </div>
 
-                    <section class="help-section">
-                        <h3>➕ Adding Extra Ingredients</h3>
-                        <p>When using preset mode, you can add additional ingredients in the "Additional
-                            Ingredients" field.
-                            These will be appended after the preset ingredients.</p>
-                    </section>
+                    <!-- Managing Tab -->
+                    <div class="help-tab-panel" id="help-tab-managing">
+                        <section class="help-section">
+                            <h3>📂 Managing Your Labels</h3>
+                            <p>View and manage labels in the <strong>"My Labels"</strong> tab.</p>
+                            <ul>
+                                <li><strong>✏️ Edit:</strong> Modify label details (opens in Create Label tab)</li>
+                                <li><strong>📋 Copy:</strong> Copy formatted label to clipboard</li>
+                                <li><strong>🗑️ Delete:</strong> Remove permanently (confirmation required)</li>
+                            </ul>
+                            <p><em>Note: Click "Update Label" after editing to save changes.</em></p>
+                        </section>
+                    </div>
 
-                    <section class="help-section">
-                        <h3>✏️ Editing & Deleting</h3>
-                        <p>Use the <strong>Edit</strong> button to modify any preset or label. Use the
-                            <strong>Delete</strong> button to remove items (you'll be asked to confirm).
-                        </p>
-                    </section>
-
-                    <section class="help-section">
-                        <h3>📋 Label Format</h3>
-                        <p>When creating labels from presets, ingredients are organized by preset:</p>
-                        <code>[Preset Name]: (ingredient1, ingredient2), [Another Preset]: (ingredient3, ingredient4)</code>
-                        <p>Additional manual ingredients appear at the end.</p>
-                    </section>
-
-                    <section class="help-section">
-                        <h3>📜 FDA Label Requirements</h3>
-                        <p>For cottage food operations, labels must include:</p>
-                        <ul>
-                            <li><strong>Statement of Identity:</strong> The product name (Label Name field)</li>
-                            <li><strong>Net Quantity:</strong> Weight or volume of contents</li>
-                            <li><strong>Ingredient Statement:</strong> All ingredients in descending order by weight
-                            </li>
-                            <li><strong>Allergen Declaration:</strong> Required for milk, eggs, wheat, soy, peanuts,
-                                sesame,
-                                tree nuts, fish, and shellfish</li>
-                            <li><strong>Business Info:</strong> Name and full address of manufacturer</li>
-                            <li><strong>Cottage Food Disclaimer:</strong> Required statement for home-prepared foods
-                            </li>
-                        </ul>
-                    </section>
-
-                    <section class="help-section">
-                        <h3>⚠️ Allergen Declaration</h3>
-                        <p>Select all allergens present in your product. For tree nuts, fish, and shellfish, specify
-                            the
-                            exact species in the details field (e.g., "Almonds, Walnuts" or "Salmon, Tuna").</p>
-                    </section>
+                    <!-- FDA Info Tab -->
+                    <div class="help-tab-panel" id="help-tab-fda">
+                        <section class="help-section">
+                            <h3>📜 FDA Requirements</h3>
+                            <p>For cottage food operations, labels must include:</p>
+                            <ul>
+                                <li><strong>Statement of Identity:</strong> Product name</li>
+                                <li><strong>Net Quantity:</strong> Weight or volume (e.g., "8 oz")</li>
+                                <li><strong>Ingredients:</strong> Listed by weight (heaviest first)</li>
+                                <li><strong>Allergens:</strong> The 9 major food allergens</li>
+                                <li><strong>Business Info:</strong> Name and complete address</li>
+                                <li><strong>Cottage Disclaimer:</strong> Required for home-prepared foods</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>⚠️ Allergen Declaration</h3>
+                            <p>The <strong>9 major allergens:</strong> Milk, Eggs, Wheat, Soy, Peanuts, Sesame, Tree
+                                Nuts, Fish, Shellfish</p>
+                            <ul>
+                                <li>Check all allergens present in your product</li>
+                                <li>For Tree Nuts/Fish/Shellfish, specify the type (e.g., "Almonds, Walnuts")</li>
+                            </ul>
+                            <p><em>⚠️ Include allergens from sub-ingredients and cross-contamination.</em></p>
+                        </section>
+                        <section class="help-section">
+                            <h3>💡 Pro Tips</h3>
+                            <ul>
+                                <li><strong>Weight order:</strong> List ingredients heaviest first</li>
+                                <li><strong>Consistent naming:</strong> Use same names across presets</li>
+                                <li><strong>Auto-save:</strong> Labels persist between sessions</li>
+                                <li><strong>Combine presets:</strong> Check multiple to merge ingredients</li>
+                            </ul>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
