@@ -1,15 +1,17 @@
 {
-  "name": "custom-label-creator",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "node api/index.js",
-    "start": "node api/index.js"
-  },
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "express": "^4.19.2",
-    "mongodb": "^6.3.0",
-    "serverless-http": "^3.2.0"
-  }
+	"name": "custom-label-creator",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "node api/index.js",
+		"start": "node api/index.js"
+	},
+	"dependencies": {
+		"express": "^4.19.2",
+		"mongodb": "^6.3.0",
+		"serverless-http": "^3.2.0"
+	},
+	"devDependencies": {
+		"dotenv": "^17.2.3"
+	}
 }
