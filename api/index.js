@@ -3,7 +3,6 @@ const path = require("path");
 const { MongoClient, ObjectId } = require("mongodb");
 const serverless = require("serverless-http");
 
-console.log(process.env.MONGODB_DB);
 const app = express();
 const MONGODB_URI =
 	process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/label_creator";

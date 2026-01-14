@@ -44,6 +44,8 @@ class LabelManager {
 				this.apiRequest("/api/presets", { method: "GET", silent: true }),
 				this.apiRequest("/api/business", { method: "GET", silent: true }),
 			]);
+
+			console.log("Loaded initial data:", labels, presets, businessInfo);
 			this.labels = Array.isArray(labels) ? labels : [];
 			this.presets = Array.isArray(presets) ? presets : [];
 			this.businessInfo = businessInfo || this.getEmptyBusinessInfo();
