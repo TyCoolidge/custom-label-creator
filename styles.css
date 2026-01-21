@@ -225,6 +225,41 @@ header p {
 	background: #229954;
 }
 
+/* Preset Header Actions */
+.preset-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.sort-buttons {
+	display: flex;
+	gap: 6px;
+}
+
+.btn-sort {
+	background: #f0f0f0;
+	color: #555;
+	padding: 8px 14px;
+	font-size: 0.85rem;
+	border: 2px solid transparent;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	font-weight: 500;
+}
+
+.btn-sort:hover {
+	background: #e0e0e0;
+	color: #333;
+}
+
+.btn-sort.active {
+	background: #667eea;
+	color: white;
+	border-color: #5a6fd6;
+}
+
 .preset-form-wrapper {
 	background: #f8f9fa;
 	border-radius: 8px;
@@ -279,6 +314,13 @@ header p {
 	border-radius: 12px;
 	font-size: 0.75rem;
 	font-weight: 600;
+}
+
+.preset-brand-name {
+	color: #2d7d6e;
+	font-size: 0.9rem;
+	font-weight: 500;
+	margin-bottom: 6px;
 }
 
 .preset-ingredients {
@@ -510,6 +552,13 @@ header p {
 	color: #667eea;
 	font-size: 0.875rem;
 	font-weight: 600;
+}
+
+.preset-checkbox-item .preset-brand-label {
+	color: #2d7d6e;
+	font-size: 0.9rem;
+	font-weight: 500;
+	margin-left: 4px;
 }
 
 .no-presets-message {
@@ -897,6 +946,15 @@ header p {
 
 	.preset-header h2 {
 		text-align: center;
+	}
+
+	.preset-header-actions {
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.sort-buttons {
+		justify-content: center;
 	}
 
 	.preset-header .btn-toggle {

@@ -8,6 +8,7 @@ class LabelManager {
 		this.editingLabelId = null;
 		this.editingPresetId = null;
 		this.lastCreatedLabelId = null; // Track last created label for copy
+		this.presetSortOrder = null; // 'az', 'za', or null for default (creation order)
 		this.initializeElements();
 		this.attachEventListeners();
 		this.render();
@@ -212,12 +213,15 @@ class LabelManager {
 		this.presetFormWrapper = document.getElementById("preset-form-wrapper");
 		this.togglePresetFormBtn = document.getElementById("toggle-preset-form");
 		this.presetName = document.getElementById("preset-name");
+		this.presetBrandName = document.getElementById("preset-brand-name");
 		this.presetIngredients = document.getElementById("preset-ingredients");
 		this.presetSubmitBtn = document.getElementById("preset-submit-btn");
 		this.presetCancelBtn = document.getElementById("preset-cancel-btn");
 		this.presetFormTitle = document.getElementById("preset-form-title");
 		this.presetsList = document.getElementById("presets-list");
 		this.presetsEmptyState = document.getElementById("presets-empty-state");
+		this.sortAzBtn = document.getElementById("sort-az");
+		this.sortZaBtn = document.getElementById("sort-za");
 		this.toastContainer = document.getElementById("toast-container");
 
 		// Help modal elements
@@ -293,6 +297,10 @@ class LabelManager {
 		this.presetCancelBtn.addEventListener("click", () =>
 			this.cancelPresetEdit()
 		);
+
+		// Preset sorting listeners
+		this.sortAzBtn.addEventListener("click", () => this.sortPresets("az"));
+		this.sortZaBtn.addEventListener("click", () => this.sortPresets("za"));
 
 		// Help modal listeners
 		this.helpBtn.addEventListener("click", () => this.openHelpModal());
@@ -768,8 +776,43 @@ class LabelManager {
 		return this.presets.find((preset) => preset.id === id);
 	}
 
+	// Get presets sorted according to current sort order
+	getSortedPresets() {
+		const presets = [...this.presets];
+		if (this.presetSortOrder === "az") {
+			return presets.sort((a, b) =>
+				a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+			);
+		} else if (this.presetSortOrder === "za") {
+			return presets.sort((a, b) =>
+				b.name.toLowerCase().localeCompare(a.name.toLowerCase())
+			);
+		}
+		// Default: return in original order (by createdAt from backend)
+		return presets;
+	}
+
+	// Set sort order and re-render presets
+	sortPresets(order) {
+		// Toggle off if clicking the same button
+		if (this.presetSortOrder === order) {
+			this.presetSortOrder = null;
+		} else {
+			this.presetSortOrder = order;
+		}
+		this.updateSortButtonStates();
+		this.renderPresets();
+	}
+
+	// Update active state of sort buttons
+	updateSortButtonStates() {
+		this.sortAzBtn.classList.toggle("active", this.presetSortOrder === "az");
+		this.sortZaBtn.classList.toggle("active", this.presetSortOrder === "za");
+	}
+
 	// UPDATE: Edit existing preset via API
 	async updatePreset(id, updatedData) {
+		console.log("Updating preset", id, updatedData);
 		try {
 			const updatedPreset = await this.apiRequest(
 				`/api/presets/${encodeURIComponent(id)}`,
@@ -1087,7 +1130,7 @@ class LabelManager {
 			const allIngredients = this.collectAllIngredients();
 			if (allIngredients.length === 0) {
 				presetSelectError.textContent =
-					"Please select at least one preset or add ingredients manually";
+					"Please select at least one ingredient or add ingredients manually";
 				return false;
 			}
 		}
@@ -1288,12 +1331,12 @@ class LabelManager {
 
 	// ========== PRESET FORM HANDLERS ==========
 
-	// Toggle preset form visibility
+	// Toggle ingredient form visibility
 	togglePresetForm() {
 		const isVisible = this.presetFormWrapper.style.display !== "none";
 		if (isVisible) {
 			this.presetFormWrapper.style.display = "none";
-			this.togglePresetFormBtn.textContent = "+ New Preset";
+			this.togglePresetFormBtn.textContent = "+ New Ingredient";
 		} else {
 			this.presetFormWrapper.style.display = "block";
 			this.togglePresetFormBtn.textContent = "− Hide Form";
@@ -1310,27 +1353,33 @@ class LabelManager {
 		}
 
 		const name = this.presetName.value.trim();
+		const brandName = this.presetBrandName.value.trim();
 		const ingredientsText = this.presetIngredients.value.trim();
 		const ingredients = this.parseIngredients(ingredientsText);
 
 		let success = false;
 		if (this.editingPresetId) {
-			// Update existing preset
+			// Update existing ingredient
 			success = await this.updatePreset(this.editingPresetId, {
 				name,
+				brandName,
 				ingredients,
 			});
 			if (success) {
 				this.editingPresetId = null;
-				this.showToast(`Preset "${name}" updated!`);
+				this.showToast(`Ingredient "${name}" updated!`);
 			}
 		} else {
-			// Create new preset
-			const newPreset = await this.createPreset({ name, ingredients });
+			// Create new ingredient
+			const newPreset = await this.createPreset({
+				name,
+				brandName,
+				ingredients,
+			});
 			if (newPreset) {
 				success = true;
 				this.showToast(
-					`Preset "${name}" created with ${ingredients.length} ingredients!`
+					`Ingredient "${name}" created with ${ingredients.length} sub-ingredients!`
 				);
 			}
 		}
@@ -1342,7 +1391,7 @@ class LabelManager {
 		}
 	}
 
-	// Validate preset form
+	// Validate ingredient form
 	validatePresetForm() {
 		const nameError = document.getElementById("preset-name-error");
 		const ingredientsError = document.getElementById(
@@ -1356,7 +1405,7 @@ class LabelManager {
 		const ingredientsText = this.presetIngredients.value.trim();
 
 		if (name === "") {
-			nameError.textContent = "Preset name is required";
+			nameError.textContent = "Ingredient name is required";
 			this.presetName.focus();
 			return false;
 		}
@@ -1377,16 +1426,17 @@ class LabelManager {
 		return true;
 	}
 
-	// Edit preset - populate form
+	// Edit ingredient - populate form
 	editPreset(id) {
 		const preset = this.getPresetById(id);
 		if (preset) {
 			this.editingPresetId = id;
 			this.presetName.value = preset.name;
+			this.presetBrandName.value = preset.brandName || "";
 			this.presetIngredients.value = preset.ingredients.join(", ");
 
-			this.presetFormTitle.textContent = "Edit Preset";
-			this.presetSubmitBtn.textContent = "Update Preset";
+			this.presetFormTitle.textContent = "Edit Ingredient";
+			this.presetSubmitBtn.textContent = "Update Ingredient";
 			this.presetFormWrapper.style.display = "block";
 			this.togglePresetFormBtn.textContent = "− Hide Form";
 
@@ -1401,34 +1451,36 @@ class LabelManager {
 		this.resetPresetForm();
 	}
 
-	// Reset preset form
+	// Reset ingredient form
 	resetPresetForm() {
 		this.presetForm.reset();
-		this.presetFormTitle.textContent = "Create New Preset";
-		this.presetSubmitBtn.textContent = "Create Preset";
+		this.presetFormTitle.textContent = "Create New Ingredient";
+		this.presetSubmitBtn.textContent = "Create Ingredient";
 		this.presetFormWrapper.style.display = "none";
-		this.togglePresetFormBtn.textContent = "+ New Preset";
+		this.togglePresetFormBtn.textContent = "+ New Ingredient";
 		document.getElementById("preset-name-error").textContent = "";
 		document.getElementById("preset-ingredients-error").textContent = "";
 	}
 
-	// Delete preset with confirmation
+	// Delete ingredient with confirmation
 	async handlePresetDelete(id) {
 		const preset = this.getPresetById(id);
 		if (
 			preset &&
-			confirm(`Are you sure you want to delete the "${preset.name}" preset?`)
+			confirm(
+				`Are you sure you want to delete the "${preset.name}" ingredient?`
+			)
 		) {
 			const presetName = preset.name;
 			const success = await this.deletePreset(id);
 			if (success) {
-				// If we were editing this preset, cancel edit mode
+				// If we were editing this ingredient, cancel edit mode
 				if (this.editingPresetId === id) {
 					this.cancelPresetEdit();
 				}
 				this.renderPresets();
 				this.updatePresetDropdown();
-				this.showToast(`Preset "${presetName}" deleted`);
+				this.showToast(`Ingredient "${presetName}" deleted`);
 			}
 		}
 	}
@@ -1440,7 +1492,7 @@ class LabelManager {
 
 		if (presets.length === 0) {
 			this.presetCheckboxes.innerHTML =
-				'<p class="no-presets-message">No presets available. Create a preset first.</p>';
+				'<p class="no-presets-message">No ingredients available. Create an ingredient first.</p>';
 			return;
 		}
 
@@ -1455,9 +1507,14 @@ class LabelManager {
 			// Update preview when preset selection changes
 			checkbox.addEventListener("change", () => this.updatePreview());
 
+			// Build label text with optional brand name
+			const brandText = preset.brandName
+				? ` - <span class="preset-brand-label">${this.escapeHtml(preset.brandName)}</span>`
+				: "";
+
 			const label = document.createElement("label");
 			label.htmlFor = `preset-cb-${preset.id}`;
-			label.innerHTML = `${this.escapeHtml(preset.name)} <span class="preset-item-count">(${preset.ingredients.length} items)</span>`;
+			label.innerHTML = `${this.escapeHtml(preset.name)}${brandText} <span class="preset-item-count">(${preset.ingredients.length} items)</span>`;
 
 			item.appendChild(checkbox);
 			item.appendChild(label);
@@ -1668,10 +1725,11 @@ class LabelManager {
 
 	// Render all presets to the DOM
 	renderPresets() {
-		const presets = this.getAllPresets();
+		const allPresets = this.getAllPresets();
+		const sortedPresets = this.getSortedPresets();
 
 		// Show/hide empty state
-		if (presets.length === 0) {
+		if (allPresets.length === 0) {
 			this.presetsEmptyState.style.display = "block";
 			this.presetsList.style.display = "none";
 		} else {
@@ -1682,8 +1740,8 @@ class LabelManager {
 		// Clear container
 		this.presetsList.innerHTML = "";
 
-		// Render each preset
-		presets.forEach((preset) => {
+		// Render each preset in sorted order
+		sortedPresets.forEach((preset) => {
 			const presetCard = this.createPresetCard(preset);
 			this.presetsList.appendChild(presetCard);
 		});
@@ -1703,11 +1761,17 @@ class LabelManager {
 				? ` +${preset.ingredients.length - 3} more`
 				: "";
 
+		// Only show brand name line if it exists
+		const brandNameHtml = preset.brandName
+			? `<div class="preset-brand-name">Brand: ${this.escapeHtml(preset.brandName)}</div>`
+			: "";
+
 		card.innerHTML = `
             <div class="preset-card-header">
                 <span class="preset-name">${this.escapeHtml(preset.name)}</span>
                 <span class="preset-count">${preset.ingredients.length} items</span>
             </div>
+            ${brandNameHtml}
             <div class="preset-ingredients">
                 ${ingredientsList}${moreText}
             </div>

@@ -23,35 +23,52 @@
         <!-- Tab Navigation -->
         <div class="tabs-container">
             <div class="tabs-nav">
-                <button type="button" class="tab-btn active" data-tab="presets">Presets</button>
+                <button type="button" class="tab-btn active" data-tab="presets">Ingredient List</button>
                 <button type="button" class="tab-btn" data-tab="label">Create Label</button>
                 <button type="button" class="tab-btn" data-tab="labels">My Labels</button>
                 <button type="button" class="tab-btn" data-tab="business">Business</button>
             </div>
 
-            <!-- Tab Panel: Presets -->
+            <!-- Tab Panel: Ingredient List (formerly Presets) -->
             <div class="tab-panel active" id="tab-presets">
                 <div class="preset-container">
                     <div class="preset-header">
-                        <h2>Ingredient Presets</h2>
-                        <button type="button" class="btn btn-toggle" id="toggle-preset-form">
-                            + New Preset
-                        </button>
+                        <h2>Ingredient List</h2>
+                        <div class="preset-header-actions">
+                            <div class="sort-buttons">
+                                <button type="button" class="btn btn-sort" id="sort-az" title="Sort A-Z">
+                                    A-Z ↓
+                                </button>
+                                <button type="button" class="btn btn-sort" id="sort-za" title="Sort Z-A">
+                                    Z-A ↓
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-toggle" id="toggle-preset-form">
+                                + New Ingredient
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Preset Creation/Edit Form -->
+                    <!-- Ingredient Creation/Edit Form -->
                     <div class="preset-form-wrapper" id="preset-form-wrapper" style="display: none;">
-                        <h3 id="preset-form-title">Create New Preset</h3>
+                        <h3 id="preset-form-title">Create New Ingredient</h3>
                         <form id="preset-form">
                             <div class="form-group">
-                                <label for="preset-name">Preset Name *</label>
-                                <input type="text" id="preset-name" placeholder="e.g., Flour, Sugar" required
-                                    maxlength="50">
+                                <label for="preset-name">Ingredient Name *</label>
+                                <input type="text" id="preset-name" placeholder="e.g., Cookie Base, Vanilla Frosting"
+                                    required maxlength="50">
                                 <span class="error-message" id="preset-name-error"></span>
                             </div>
 
                             <div class="form-group">
-                                <label for="preset-ingredients">Ingredients *</label>
+                                <label for="preset-brand-name">Brand Name <small class="form-hint">(Optional - for
+                                        organization only, not shown on labels)</small></label>
+                                <input type="text" id="preset-brand-name" placeholder="e.g., King Arthur, Domino"
+                                    maxlength="50">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="preset-ingredients">Sub-Ingredients *</label>
                                 <textarea id="preset-ingredients"
                                     placeholder="Enter ingredients separated by commas&#10;e.g., All-purpose flour, Whole wheat flour, Bread flour"
                                     rows="3" required maxlength="500"></textarea>
@@ -61,7 +78,7 @@
 
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary" id="preset-submit-btn">
-                                    Create Preset
+                                    Create Ingredient
                                 </button>
                                 <button type="button" class="btn btn-secondary" id="preset-cancel-btn">
                                     Cancel
@@ -70,13 +87,13 @@
                         </form>
                     </div>
 
-                    <!-- Presets Display -->
+                    <!-- Ingredients Display -->
                     <div id="presets-list" class="presets-list">
-                        <!-- Presets will be dynamically inserted here -->
+                        <!-- Ingredients will be dynamically inserted here -->
                     </div>
 
                     <div id="presets-empty-state" class="empty-state">
-                        <p>📦 No presets yet. Create your first preset above!</p>
+                        <p>📦 No ingredients yet. Create your first ingredient above!</p>
                     </div>
                 </div>
             </div>
@@ -107,7 +124,7 @@
                             <label for="creation-mode">Creation Mode *</label>
                             <select id="creation-mode" required>
                                 <option value="manual">Manual Entry</option>
-                                <option value="preset" selected>From Preset</option>
+                                <option value="preset" selected>From Ingredient List</option>
                             </select>
                         </div>
 
@@ -118,9 +135,9 @@
                         </div>
 
                         <div class="form-group" id="preset-select-group">
-                            <label>Select Presets <small class="form-hint">(Select one or more)</small></label>
+                            <label>Select Ingredients <small class="form-hint">(Select one or more)</small></label>
                             <div id="preset-checkboxes" class="preset-checkboxes">
-                                <!-- Preset checkboxes will be dynamically inserted here -->
+                                <!-- Ingredient checkboxes will be dynamically inserted here -->
                             </div>
                             <span class="error-message" id="preset-select-error"></span>
                         </div>
@@ -131,7 +148,7 @@
                             <input type="text" id="additional-ingredients" placeholder="e.g., Chocolate Chips, Walnuts">
                             <span class="form-hint">Add extra ingredients separated by commas. These will be combined
                                 with
-                                preset ingredients.</span>
+                                selected ingredients.</span>
                         </div>
 
                         <!-- FDA Food Labeling Fields -->
@@ -319,8 +336,8 @@
                                 Follow these steps:</p>
                             <ol>
                                 <li><strong>Set up your business info</strong> in the Business tab (required)</li>
-                                <li><strong>Create ingredient presets</strong> in the Presets tab (optional)</li>
-                                <li><strong>Create labels</strong> using presets or manual entry</li>
+                                <li><strong>Create ingredients</strong> in the Ingredient List tab (optional)</li>
+                                <li><strong>Create labels</strong> using ingredients or manual entry</li>
                                 <li><strong>Copy and use</strong> your formatted labels anywhere</li>
                             </ol>
                         </section>
@@ -342,16 +359,16 @@
                             <p><em>✓ Once saved, the tab shows a checkmark and auto-fills on all labels.</em></p>
                         </section>
                         <section class="help-section">
-                            <h3>🧩 Ingredient Presets</h3>
-                            <p>Presets are reusable ingredient groups that save time.</p>
+                            <h3>🧩 Ingredient List</h3>
+                            <p>Ingredients are reusable ingredient groups that save time.</p>
                             <ol>
-                                <li>Go to the <strong>"Presets"</strong> tab</li>
-                                <li>Click <strong>"+ New Preset"</strong></li>
+                                <li>Go to the <strong>"Ingredient List"</strong> tab</li>
+                                <li>Click <strong>"+ New Ingredient"</strong></li>
                                 <li>Enter a name (e.g., "Cookie Base", "Vanilla Frosting")</li>
-                                <li>Enter ingredients separated by commas</li>
-                                <li>Click <strong>"Create Preset"</strong></li>
+                                <li>Enter sub-ingredients separated by commas</li>
+                                <li>Click <strong>"Create Ingredient"</strong></li>
                             </ol>
-                            <p><strong>Edit/Delete:</strong> Use ✏️ Edit or 🗑️ Delete buttons on each preset.</p>
+                            <p><strong>Edit/Delete:</strong> Use ✏️ Edit or 🗑️ Delete buttons on each ingredient.</p>
                         </section>
                     </div>
 
@@ -359,12 +376,12 @@
                     <div class="help-tab-panel" id="help-tab-creating">
                         <section class="help-section">
                             <h3>🏷️ Creating Labels</h3>
-                            <p><strong>From Preset Mode (Recommended):</strong></p>
+                            <p><strong>From Ingredient List Mode (Recommended):</strong></p>
                             <ol>
                                 <li>Go to <strong>"Create Label"</strong> tab</li>
                                 <li>Enter a <strong>Label Name</strong> (product name)</li>
-                                <li>Set mode to <strong>"From Preset"</strong></li>
-                                <li>Check one or more presets to combine ingredients</li>
+                                <li>Set mode to <strong>"From Ingredient List"</strong></li>
+                                <li>Check one or more ingredients to combine</li>
                                 <li>Add optional extra ingredients</li>
                                 <li>Enter <strong>Net Quantity</strong> and select <strong>allergens</strong></li>
                                 <li>Click <strong>"Create Label(s)"</strong></li>
@@ -425,9 +442,9 @@
                             <h3>💡 Pro Tips</h3>
                             <ul>
                                 <li><strong>Weight order:</strong> List ingredients heaviest first</li>
-                                <li><strong>Consistent naming:</strong> Use same names across presets</li>
+                                <li><strong>Consistent naming:</strong> Use same names across ingredients</li>
                                 <li><strong>Auto-save:</strong> Labels persist between sessions</li>
-                                <li><strong>Combine presets:</strong> Check multiple to merge ingredients</li>
+                                <li><strong>Combine ingredients:</strong> Check multiple to merge ingredients</li>
                             </ul>
                         </section>
                     </div>

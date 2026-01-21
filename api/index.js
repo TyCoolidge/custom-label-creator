@@ -1,6 +1,6 @@
+require("dotenv").config();
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
-const serverless = require("serverless-http");
 
 const app = express();
 const MONGODB_URI =
@@ -8,15 +8,25 @@ const MONGODB_URI =
 const DB_NAME = process.env.MONGODB_DB || "test";
 
 let cachedDb = null;
+
+function withTimeout(promise, ms) {
+	const timeout = new Promise((_, reject) =>
+		setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
+	);
+	return Promise.race([promise, timeout]);
+}
+
 async function getDb() {
 	if (cachedDb) {
 		return cachedDb;
 	}
+	console.log("Connecting to MongoDB...");
 	const client = new MongoClient(MONGODB_URI, {
 		serverSelectionTimeoutMS: 5000,
-		connectTimeoutMS: 10000,
+		connectTimeoutMS: 5000,
 	});
-	await client.connect();
+	await withTimeout(client.connect(), 8000);
+	console.log("MongoDB connected");
 	cachedDb = client.db(DB_NAME);
 	return cachedDb;
 }
@@ -83,6 +93,12 @@ function stripMongoId(doc) {
 	return { id: _id.toString(), ...rest };
 }
 
+// Test endpoint
+app.get("/api/test", (req, res) => {
+	console.log("Test endpoint hit");
+	res.json({ ok: true, time: new Date().toISOString() });
+});
+
 // ===== LABELS =====
 app.get("/api/labels", async (req, res) => {
 	try {
@@ -144,9 +160,8 @@ app.put("/api/labels/:id", async (req, res) => {
 				{ $set: updates },
 				{ returnDocument: "after" }
 			);
-		if (!result.value)
-			return res.status(404).json({ error: "Label not found" });
-		res.json(stripMongoId(result.value));
+		if (!result) return res.status(404).json({ error: "Label not found" });
+		res.json(stripMongoId(result));
 	} catch (err) {
 		console.error("PUT /api/labels/:id error", err);
 		res.status(500).json({ error: "Failed to update label" });
@@ -194,6 +209,7 @@ app.post("/api/presets", async (req, res) => {
 		const preset = {
 			id: input.id || Date.now().toString(),
 			name: input.name || "",
+			brandName: input.brandName || "",
 			ingredients: input.ingredients || [],
 			createdAt: new Date().toISOString(),
 		};
@@ -219,9 +235,8 @@ app.put("/api/presets/:id", async (req, res) => {
 				{ $set: updates },
 				{ returnDocument: "after" }
 			);
-		if (!result.value)
-			return res.status(404).json({ error: "Preset not found" });
-		res.json(stripMongoId(result.value));
+		if (!result) return res.status(404).json({ error: "Preset not found" });
+		res.json(stripMongoId(result));
 	} catch (err) {
 		console.error("PUT /api/presets/:id error", err);
 		res.status(500).json({ error: "Failed to update preset" });
@@ -285,4 +300,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = serverless(app);
+module.exports = app;
