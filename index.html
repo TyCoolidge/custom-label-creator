@@ -35,6 +35,12 @@
                     <div class="preset-header">
                         <h2>Ingredient List</h2>
                         <div class="preset-header-actions">
+                            <div class="search-container">
+                                <input type="text" id="preset-search" class="search-input"
+                                    placeholder="Search ingredients..." maxlength="100">
+                                <button type="button" class="search-clear" id="preset-search-clear" title="Clear search"
+                                    style="display: none;">×</button>
+                            </div>
                             <div class="sort-buttons">
                                 <button type="button" class="btn btn-sort" id="sort-az" title="Sort A-Z">
                                     A-Z ↓
@@ -68,11 +74,12 @@
                             </div>
 
                             <div class="form-group">
-                                <label for="preset-ingredients">Sub-Ingredients *</label>
+                                <label for="preset-ingredients">Sub-Ingredients <small class="form-hint">(Optional - for
+                                        ingredients with multiple components)</small></label>
                                 <textarea id="preset-ingredients"
                                     placeholder="Enter ingredients separated by commas&#10;e.g., All-purpose flour, Whole wheat flour, Bread flour"
-                                    rows="3" required maxlength="500"></textarea>
-                                <small class="form-hint">Separate multiple ingredients with commas.</small>
+                                    rows="3" maxlength="500"></textarea>
+                                <small class="form-hint">Leave empty for single-item ingredients like "Salt".</small>
                                 <span class="error-message" id="preset-ingredients-error"></span>
                             </div>
 
@@ -136,6 +143,12 @@
 
                         <div class="form-group" id="preset-select-group">
                             <label>Select Ingredients <small class="form-hint">(Select one or more)</small></label>
+                            <div class="ingredient-select-search">
+                                <input type="text" id="ingredient-select-search" class="search-input"
+                                    placeholder="Search ingredients by name, brand, or sub-ingredients" maxlength="100">
+                                <button type="button" class="search-clear" id="ingredient-select-search-clear"
+                                    title="Clear search" style="display: none;">×</button>
+                            </div>
                             <div id="preset-checkboxes" class="preset-checkboxes">
                                 <!-- Ingredient checkboxes will be dynamically inserted here -->
                             </div>

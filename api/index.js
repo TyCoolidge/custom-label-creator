@@ -202,6 +202,35 @@ app.get("/api/presets", async (req, res) => {
 	}
 });
 
+// Search presets by name, brandName, or ingredients
+app.get("/api/presets/search", async (req, res) => {
+	try {
+		const db = await getDb();
+		const col = db.collection("presets");
+		const query = req.query.q || "";
+
+		if (!query.trim()) {
+			// Return all presets if no search query
+			const presets = await col.find({}).sort({ createdAt: 1 }).toArray();
+			return res.json(presets.map(stripMongoId));
+		}
+
+		// Case-insensitive partial match on name, brandName, or ingredients array
+		const regex = { $regex: query.trim(), $options: "i" };
+		const presets = await col
+			.find({
+				$or: [{ name: regex }, { brandName: regex }, { ingredients: regex }],
+			})
+			.sort({ createdAt: 1 })
+			.toArray();
+
+		res.json(presets.map(stripMongoId));
+	} catch (err) {
+		console.error("GET /api/presets/search error", err);
+		res.status(500).json({ error: "Failed to search presets" });
+	}
+});
+
 app.post("/api/presets", async (req, res) => {
 	try {
 		const db = await getDb();

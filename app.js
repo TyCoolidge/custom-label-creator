@@ -9,6 +9,12 @@ class LabelManager {
 		this.editingPresetId = null;
 		this.lastCreatedLabelId = null; // Track last created label for copy
 		this.presetSortOrder = null; // 'az', 'za', or null for default (creation order)
+		this.presetSearchQuery = ""; // Current search query for Ingredient List tab
+		this.presetSearchResults = null; // null means show all, array means show filtered
+		this.searchDebounceTimer = null; // Timer for debounced search
+		this.ingredientSelectSearchQuery = ""; // Search query for Select Ingredients in Create Label tab
+		this.ingredientSelectSearchResults = null; // null means show all, array means show filtered
+		this.ingredientSelectDebounceTimer = null; // Timer for debounced search
 		this.initializeElements();
 		this.attachEventListeners();
 		this.render();
@@ -222,6 +228,14 @@ class LabelManager {
 		this.presetsEmptyState = document.getElementById("presets-empty-state");
 		this.sortAzBtn = document.getElementById("sort-az");
 		this.sortZaBtn = document.getElementById("sort-za");
+		this.presetSearchInput = document.getElementById("preset-search");
+		this.presetSearchClear = document.getElementById("preset-search-clear");
+		this.ingredientSelectSearch = document.getElementById(
+			"ingredient-select-search"
+		);
+		this.ingredientSelectSearchClear = document.getElementById(
+			"ingredient-select-search-clear"
+		);
 		this.toastContainer = document.getElementById("toast-container");
 
 		// Help modal elements
@@ -301,6 +315,22 @@ class LabelManager {
 		// Preset sorting listeners
 		this.sortAzBtn.addEventListener("click", () => this.sortPresets("az"));
 		this.sortZaBtn.addEventListener("click", () => this.sortPresets("za"));
+
+		// Preset search listeners
+		this.presetSearchInput.addEventListener("input", (e) =>
+			this.handleSearchInput(e.target.value)
+		);
+		this.presetSearchClear.addEventListener("click", () =>
+			this.clearPresetSearch()
+		);
+
+		// Ingredient select search listeners (Create Label tab)
+		this.ingredientSelectSearch.addEventListener("input", (e) =>
+			this.handleIngredientSelectSearch(e.target.value)
+		);
+		this.ingredientSelectSearchClear.addEventListener("click", () =>
+			this.clearIngredientSelectSearch()
+		);
 
 		// Help modal listeners
 		this.helpBtn.addEventListener("click", () => this.openHelpModal());
@@ -777,19 +807,25 @@ class LabelManager {
 	}
 
 	// Get presets sorted according to current sort order
+	// Uses search results if a search is active, otherwise all presets
 	getSortedPresets() {
-		const presets = [...this.presets];
+		// Use search results if available, otherwise use all presets
+		const basePresets =
+			this.presetSearchResults !== null
+				? [...this.presetSearchResults]
+				: [...this.presets];
+
 		if (this.presetSortOrder === "az") {
-			return presets.sort((a, b) =>
+			return basePresets.sort((a, b) =>
 				a.name.toLowerCase().localeCompare(b.name.toLowerCase())
 			);
 		} else if (this.presetSortOrder === "za") {
-			return presets.sort((a, b) =>
+			return basePresets.sort((a, b) =>
 				b.name.toLowerCase().localeCompare(a.name.toLowerCase())
 			);
 		}
 		// Default: return in original order (by createdAt from backend)
-		return presets;
+		return basePresets;
 	}
 
 	// Set sort order and re-render presets
@@ -808,6 +844,116 @@ class LabelManager {
 	updateSortButtonStates() {
 		this.sortAzBtn.classList.toggle("active", this.presetSortOrder === "az");
 		this.sortZaBtn.classList.toggle("active", this.presetSortOrder === "za");
+	}
+
+	// Handle search input with debouncing
+	handleSearchInput(value) {
+		this.presetSearchQuery = value;
+
+		// Show/hide clear button
+		this.presetSearchClear.style.display = value.trim() ? "block" : "none";
+
+		// Clear existing debounce timer
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+		}
+
+		// Debounce the search (300ms delay)
+		this.searchDebounceTimer = setTimeout(() => {
+			this.performPresetSearch(value);
+		}, 300);
+	}
+
+	// Perform the actual search API call
+	async performPresetSearch(query) {
+		try {
+			if (!query.trim()) {
+				// Empty query - show all presets
+				this.presetSearchResults = null;
+				this.renderPresets();
+				return;
+			}
+
+			const results = await this.apiRequest(
+				`/api/presets/search?q=${encodeURIComponent(query.trim())}`,
+				{ method: "GET", silent: true }
+			);
+			this.presetSearchResults = Array.isArray(results) ? results : [];
+			this.renderPresets();
+		} catch (error) {
+			console.error("Search failed", error);
+			this.presetSearchResults = [];
+			this.renderPresets();
+		}
+	}
+
+	// Clear search input and results
+	clearPresetSearch() {
+		this.presetSearchInput.value = "";
+		this.presetSearchQuery = "";
+		this.presetSearchResults = null;
+		this.presetSearchClear.style.display = "none";
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+		}
+		this.renderPresets();
+	}
+
+	// Handle search input for Select Ingredients in Create Label tab (server-side API)
+	handleIngredientSelectSearch(value) {
+		this.ingredientSelectSearchQuery = value;
+
+		// Show/hide clear button
+		this.ingredientSelectSearchClear.style.display = value.trim()
+			? "block"
+			: "none";
+
+		// Clear existing debounce timer
+		if (this.ingredientSelectDebounceTimer) {
+			clearTimeout(this.ingredientSelectDebounceTimer);
+		}
+
+		// Debounce the search (300ms delay)
+		this.ingredientSelectDebounceTimer = setTimeout(() => {
+			this.performIngredientSelectSearch(value);
+		}, 300);
+	}
+
+	// Perform the actual search API call for ingredient select
+	async performIngredientSelectSearch(query) {
+		try {
+			if (!query.trim()) {
+				// Empty query - show all presets
+				this.ingredientSelectSearchResults = null;
+				this.renderPresetCheckboxes();
+				return;
+			}
+
+			const results = await this.apiRequest(
+				`/api/presets/search?q=${encodeURIComponent(query.trim())}`,
+				{ method: "GET", silent: true }
+			);
+			this.ingredientSelectSearchResults = Array.isArray(results)
+				? results
+				: [];
+			this.renderPresetCheckboxes();
+		} catch (error) {
+			console.error("Ingredient select search failed", error);
+			this.ingredientSelectSearchResults = [];
+			this.renderPresetCheckboxes();
+		}
+	}
+
+	// Clear ingredient select search
+	clearIngredientSelectSearch() {
+		this.ingredientSelectSearch.value = "";
+		this.ingredientSelectSearchQuery = "";
+		this.ingredientSelectSearchResults = null;
+		this.ingredientSelectSearchClear.style.display = "none";
+		if (this.ingredientSelectDebounceTimer) {
+			clearTimeout(this.ingredientSelectDebounceTimer);
+		}
+		this.renderPresetCheckboxes();
 	}
 
 	// UPDATE: Edit existing preset via API
@@ -1051,7 +1197,13 @@ class LabelManager {
 		selectedPresetIds.forEach((presetId) => {
 			const preset = this.getPresetById(presetId);
 			if (preset) {
-				allIngredients.push(...preset.ingredients);
+				// For single ingredients (no sub-ingredients), use the preset name itself
+				if (preset.ingredients && preset.ingredients.length > 0) {
+					allIngredients.push(...preset.ingredients);
+				} else {
+					// Single ingredient - use the preset name
+					allIngredients.push(preset.name);
+				}
 			}
 		});
 
@@ -1073,9 +1225,15 @@ class LabelManager {
 		const selectedPresetIds = this.getSelectedPresets();
 		selectedPresetIds.forEach((presetId) => {
 			const preset = this.getPresetById(presetId);
-			if (preset && preset.ingredients.length > 0) {
-				const ingredientsList = preset.ingredients.join(", ");
-				parts.push(`${preset.name} (${ingredientsList})`);
+			if (preset) {
+				if (preset.ingredients && preset.ingredients.length > 0) {
+					// Multi-ingredient preset: show as "PresetName (ingredient1, ingredient2)"
+					const ingredientsList = preset.ingredients.join(", ");
+					parts.push(`${preset.name} (${ingredientsList})`);
+				} else {
+					// Single ingredient: just show the preset name
+					parts.push(preset.name);
+				}
 			}
 		});
 
@@ -1402,7 +1560,6 @@ class LabelManager {
 		ingredientsError.textContent = "";
 
 		const name = this.presetName.value.trim();
-		const ingredientsText = this.presetIngredients.value.trim();
 
 		if (name === "") {
 			nameError.textContent = "Ingredient name is required";
@@ -1410,18 +1567,7 @@ class LabelManager {
 			return false;
 		}
 
-		if (ingredientsText === "") {
-			ingredientsError.textContent = "At least one ingredient is required";
-			this.presetIngredients.focus();
-			return false;
-		}
-
-		const ingredients = this.parseIngredients(ingredientsText);
-		if (ingredients.length === 0) {
-			ingredientsError.textContent = "Please enter valid ingredients";
-			this.presetIngredients.focus();
-			return false;
-		}
+		// Sub-ingredients are now optional - no validation required
 
 		return true;
 	}
@@ -1487,16 +1633,32 @@ class LabelManager {
 
 	// Render preset checkboxes for multi-selection
 	renderPresetCheckboxes() {
-		const presets = this.getAllPresets();
+		// Save currently selected preset IDs before re-rendering
+		const previouslySelected = this.getSelectedPresets();
+
+		const allPresets = this.getAllPresets();
 		this.presetCheckboxes.innerHTML = "";
 
-		if (presets.length === 0) {
+		if (allPresets.length === 0) {
 			this.presetCheckboxes.innerHTML =
 				'<p class="no-presets-message">No ingredients available. Create an ingredient first.</p>';
 			return;
 		}
 
-		presets.forEach((preset) => {
+		// Use server-side search results if a search is active
+		const isSearchActive = this.ingredientSelectSearchResults !== null;
+		const presetsToDisplay = isSearchActive
+			? this.ingredientSelectSearchResults
+			: allPresets;
+
+		// Show empty search message if search returned no results
+		if (isSearchActive && presetsToDisplay.length === 0) {
+			const escapedQuery = this.escapeHtml(this.ingredientSelectSearchQuery);
+			this.presetCheckboxes.innerHTML = `<p class="no-presets-message">🔍 No ingredients found matching "${escapedQuery}"</p>`;
+			return;
+		}
+
+		presetsToDisplay.forEach((preset) => {
 			const item = document.createElement("div");
 			item.className = "preset-checkbox-item";
 
@@ -1504,6 +1666,8 @@ class LabelManager {
 			checkbox.type = "checkbox";
 			checkbox.id = `preset-cb-${preset.id}`;
 			checkbox.value = preset.id;
+			// Restore selection state
+			checkbox.checked = previouslySelected.includes(preset.id);
 			// Update preview when preset selection changes
 			checkbox.addEventListener("change", () => this.updatePreview());
 
@@ -1512,9 +1676,16 @@ class LabelManager {
 				? ` - <span class="preset-brand-label">${this.escapeHtml(preset.brandName)}</span>`
 				: "";
 
+			// Handle item count display for empty ingredients
+			const hasIngredients =
+				preset.ingredients && preset.ingredients.length > 0;
+			const itemCountText = hasIngredients
+				? `(${preset.ingredients.length} items)`
+				: "(Single)";
+
 			const label = document.createElement("label");
 			label.htmlFor = `preset-cb-${preset.id}`;
-			label.innerHTML = `${this.escapeHtml(preset.name)}${brandText} <span class="preset-item-count">(${preset.ingredients.length} items)</span>`;
+			label.innerHTML = `${this.escapeHtml(preset.name)}${brandText} <span class="preset-item-count">${itemCountText}</span>`;
 
 			item.appendChild(checkbox);
 			item.appendChild(label);
@@ -1727,24 +1898,35 @@ class LabelManager {
 	renderPresets() {
 		const allPresets = this.getAllPresets();
 		const sortedPresets = this.getSortedPresets();
-
-		// Show/hide empty state
-		if (allPresets.length === 0) {
-			this.presetsEmptyState.style.display = "block";
-			this.presetsList.style.display = "none";
-		} else {
-			this.presetsEmptyState.style.display = "none";
-			this.presetsList.style.display = "grid";
-		}
+		const isSearchActive = this.presetSearchResults !== null;
 
 		// Clear container
 		this.presetsList.innerHTML = "";
 
-		// Render each preset in sorted order
-		sortedPresets.forEach((preset) => {
-			const presetCard = this.createPresetCard(preset);
-			this.presetsList.appendChild(presetCard);
-		});
+		// Handle empty states
+		if (allPresets.length === 0 && !isSearchActive) {
+			// No presets at all
+			this.presetsEmptyState.innerHTML =
+				"<p>📦 No ingredients yet. Create your first ingredient above!</p>";
+			this.presetsEmptyState.style.display = "block";
+			this.presetsList.style.display = "none";
+		} else if (isSearchActive && sortedPresets.length === 0) {
+			// Search returned no results
+			const escapedQuery = this.escapeHtml(this.presetSearchQuery);
+			this.presetsEmptyState.innerHTML = `<p>🔍 No ingredients found matching "${escapedQuery}"</p>`;
+			this.presetsEmptyState.style.display = "block";
+			this.presetsList.style.display = "none";
+		} else {
+			// Show presets
+			this.presetsEmptyState.style.display = "none";
+			this.presetsList.style.display = "grid";
+
+			// Render each preset in sorted order
+			sortedPresets.forEach((preset) => {
+				const presetCard = this.createPresetCard(preset);
+				this.presetsList.appendChild(presetCard);
+			});
+		}
 	}
 
 	// Create preset card element
@@ -1752,14 +1934,26 @@ class LabelManager {
 		const card = document.createElement("div");
 		card.className = "preset-card";
 
-		const ingredientsList = preset.ingredients
-			.slice(0, 3)
-			.map((ing) => this.escapeHtml(ing))
-			.join(", ");
-		const moreText =
-			preset.ingredients.length > 3
-				? ` +${preset.ingredients.length - 3} more`
-				: "";
+		// Handle ingredients display - show "Single ingredient" if no sub-ingredients
+		const hasIngredients = preset.ingredients && preset.ingredients.length > 0;
+		let ingredientsDisplay = "";
+		let itemCountText = "";
+
+		if (hasIngredients) {
+			const ingredientsList = preset.ingredients
+				.slice(0, 3)
+				.map((ing) => this.escapeHtml(ing))
+				.join(", ");
+			const moreText =
+				preset.ingredients.length > 3
+					? ` +${preset.ingredients.length - 3} more`
+					: "";
+			ingredientsDisplay = `${ingredientsList}${moreText}`;
+			itemCountText = `${preset.ingredients.length} items`;
+		} else {
+			ingredientsDisplay = `<em class="no-sub-ingredients">Single ingredient</em>`;
+			itemCountText = "Single";
+		}
 
 		// Only show brand name line if it exists
 		const brandNameHtml = preset.brandName
@@ -1769,11 +1963,11 @@ class LabelManager {
 		card.innerHTML = `
             <div class="preset-card-header">
                 <span class="preset-name">${this.escapeHtml(preset.name)}</span>
-                <span class="preset-count">${preset.ingredients.length} items</span>
+                <span class="preset-count">${itemCountText}</span>
             </div>
             ${brandNameHtml}
             <div class="preset-ingredients">
-                ${ingredientsList}${moreText}
+                ${ingredientsDisplay}
             </div>
             <div class="preset-actions">
                 <button class="btn btn-edit btn-small" data-id="${preset.id}">
