@@ -33,22 +33,18 @@ async function getDb() {
 
 const defaultPresets = [
 	{
-		id: "default-1",
 		name: "Baking Basics",
 		ingredients: ["Flour", "Sugar", "Salt", "Baking Powder", "Baking Soda"],
 	},
 	{
-		id: "default-2",
 		name: "Spices",
 		ingredients: ["Cinnamon", "Vanilla", "Nutmeg", "Ginger", "Cloves"],
 	},
 	{
-		id: "default-3",
 		name: "Dairy",
 		ingredients: ["Butter", "Milk", "Eggs", "Heavy Cream", "Sour Cream"],
 	},
 	{
-		id: "default-4",
 		name: "Nuts & Seeds",
 		ingredients: [
 			"Almonds",
@@ -59,7 +55,6 @@ const defaultPresets = [
 		],
 	},
 	{
-		id: "default-5",
 		name: "Chocolate",
 		ingredients: [
 			"Cocoa Powder",
@@ -69,7 +64,6 @@ const defaultPresets = [
 		],
 	},
 	{
-		id: "default-6",
 		name: "Fruits",
 		ingredients: ["Blueberries", "Strawberries", "Bananas", "Apples", "Lemons"],
 	},
@@ -91,6 +85,20 @@ function stripMongoId(doc) {
 	if (!doc) return doc;
 	const { _id, ...rest } = doc;
 	return { id: _id.toString(), ...rest };
+}
+
+// Helper for backward compatibility - support both ObjectId and legacy custom id
+function getPresetQuery(id) {
+	try {
+		// Try to parse as ObjectId (24 char hex string)
+		if (ObjectId.isValid(id) && new ObjectId(id).toString() === id) {
+			return { _id: new ObjectId(id) };
+		}
+	} catch {
+		// Not a valid ObjectId, fall through to legacy query
+	}
+	// Fall back to legacy custom id field
+	return { id: id };
 }
 
 // Test endpoint
@@ -193,7 +201,8 @@ app.get("/api/presets", async (req, res) => {
 			const now = new Date().toISOString();
 			const docs = defaultPresets.map((p) => ({ ...p, createdAt: now }));
 			await col.insertMany(docs);
-			presets = docs;
+			// Re-query to get the inserted documents with their _ids
+			presets = await col.find({}).sort({ createdAt: 1 }).toArray();
 		}
 		res.json(presets.map(stripMongoId));
 	} catch (err) {
@@ -236,14 +245,14 @@ app.post("/api/presets", async (req, res) => {
 		const db = await getDb();
 		const input = req.body || {};
 		const preset = {
-			id: input.id || Date.now().toString(),
 			name: input.name || "",
 			brandName: input.brandName || "",
 			ingredients: input.ingredients || [],
 			createdAt: new Date().toISOString(),
 		};
-		await db.collection("presets").insertOne(preset);
-		res.status(201).json(preset);
+		const result = await db.collection("presets").insertOne(preset);
+		// Return the preset with the MongoDB-generated _id converted to id
+		res.status(201).json(stripMongoId({ _id: result.insertedId, ...preset }));
 	} catch (err) {
 		console.error("POST /api/presets error", err);
 		res.status(500).json({ error: "Failed to create preset" });
@@ -257,13 +266,14 @@ app.put("/api/presets/:id", async (req, res) => {
 			...(req.body || {}),
 			updatedAt: new Date().toISOString(),
 		};
+		// Remove id fields that shouldn't be updated
+		delete updates._id;
+		delete updates.id;
+		// Use backward-compatible query (ObjectId or legacy custom id)
+		const query = getPresetQuery(req.params.id);
 		const result = await db
 			.collection("presets")
-			.findOneAndUpdate(
-				{ id: req.params.id },
-				{ $set: updates },
-				{ returnDocument: "after" }
-			);
+			.findOneAndUpdate(query, { $set: updates }, { returnDocument: "after" });
 		if (!result) return res.status(404).json({ error: "Preset not found" });
 		res.json(stripMongoId(result));
 	} catch (err) {
@@ -275,9 +285,9 @@ app.put("/api/presets/:id", async (req, res) => {
 app.delete("/api/presets/:id", async (req, res) => {
 	try {
 		const db = await getDb();
-		const result = await db
-			.collection("presets")
-			.deleteOne({ id: req.params.id });
+		// Use backward-compatible query (ObjectId or legacy custom id)
+		const query = getPresetQuery(req.params.id);
+		const result = await db.collection("presets").deleteOne(query);
 		if (!result.deletedCount)
 			return res.status(404).json({ error: "Preset not found" });
 		res.json({ success: true });
