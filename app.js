@@ -8,6 +8,14 @@ class LabelManager {
 		this.editingLabelId = null;
 		this.editingPresetId = null;
 		this.lastCreatedLabelId = null; // Track last created label for copy
+		this.presetSortOrder = null; // 'az', 'za', or null for default (creation order)
+		this.presetSearchQuery = ""; // Current search query for Ingredient List tab
+		this.presetSearchResults = null; // null means show all, array means show filtered
+		this.searchDebounceTimer = null; // Timer for debounced search
+		this.ingredientSelectSearchQuery = ""; // Search query for Select Ingredients in Create Label tab
+		this.ingredientSelectSearchResults = null; // null means show all, array means show filtered
+		this.ingredientSelectDebounceTimer = null; // Timer for debounced search
+		this.selectedPresetOrder = []; // Ordered list of selected preset IDs for reordering
 		this.initializeElements();
 		this.attachEventListeners();
 		this.render();
@@ -212,12 +220,27 @@ class LabelManager {
 		this.presetFormWrapper = document.getElementById("preset-form-wrapper");
 		this.togglePresetFormBtn = document.getElementById("toggle-preset-form");
 		this.presetName = document.getElementById("preset-name");
+		this.presetBrandName = document.getElementById("preset-brand-name");
 		this.presetIngredients = document.getElementById("preset-ingredients");
 		this.presetSubmitBtn = document.getElementById("preset-submit-btn");
 		this.presetCancelBtn = document.getElementById("preset-cancel-btn");
 		this.presetFormTitle = document.getElementById("preset-form-title");
 		this.presetsList = document.getElementById("presets-list");
 		this.presetsEmptyState = document.getElementById("presets-empty-state");
+		this.sortAzBtn = document.getElementById("sort-az");
+		this.sortZaBtn = document.getElementById("sort-za");
+		this.presetSearchInput = document.getElementById("preset-search");
+		this.presetSearchClear = document.getElementById("preset-search-clear");
+		this.ingredientSelectSearch = document.getElementById(
+			"ingredient-select-search"
+		);
+		this.ingredientSelectSearchClear = document.getElementById(
+			"ingredient-select-search-clear"
+		);
+		this.selectedPresetsGroup = document.getElementById(
+			"selected-presets-group"
+		);
+		this.selectedPresetsList = document.getElementById("selected-presets-list");
 		this.toastContainer = document.getElementById("toast-container");
 
 		// Help modal elements
@@ -228,6 +251,8 @@ class LabelManager {
 		// FDA food labeling elements
 		this.netQuantity = document.getElementById("net-quantity");
 		this.netQuantityUnit = document.getElementById("net-quantity-unit");
+		this.showBlankQuantity = document.getElementById("show-blank-quantity");
+		this.quantityError = document.getElementById("quantity-error");
 		this.allergenDetails = document.getElementById("allergen-details");
 		this.businessName = document.getElementById("business-name");
 		this.businessAddress = document.getElementById("business-address");
@@ -273,6 +298,10 @@ class LabelManager {
 		);
 		this.netQuantity.addEventListener("input", () => this.updatePreview());
 		this.netQuantityUnit.addEventListener("change", () => this.updatePreview());
+		this.showBlankQuantity.addEventListener("change", () => {
+			this.handleBlankQuantityToggle();
+			this.updatePreview();
+		});
 		this.allergenDetails.addEventListener("input", () => this.updatePreview());
 
 		// Allergen checkbox listeners
@@ -292,6 +321,26 @@ class LabelManager {
 		);
 		this.presetCancelBtn.addEventListener("click", () =>
 			this.cancelPresetEdit()
+		);
+
+		// Preset sorting listeners
+		this.sortAzBtn.addEventListener("click", () => this.sortPresets("az"));
+		this.sortZaBtn.addEventListener("click", () => this.sortPresets("za"));
+
+		// Preset search listeners
+		this.presetSearchInput.addEventListener("input", (e) =>
+			this.handleSearchInput(e.target.value)
+		);
+		this.presetSearchClear.addEventListener("click", () =>
+			this.clearPresetSearch()
+		);
+
+		// Ingredient select search listeners (Create Label tab)
+		this.ingredientSelectSearch.addEventListener("input", (e) =>
+			this.handleIngredientSelectSearch(e.target.value)
+		);
+		this.ingredientSelectSearchClear.addEventListener("click", () =>
+			this.clearIngredientSelectSearch()
 		);
 
 		// Help modal listeners
@@ -410,6 +459,7 @@ class LabelManager {
 			this.labelName.value.trim() ||
 			ingredientsText ||
 			this.netQuantity.value ||
+			this.showBlankQuantity.checked ||
 			allergens.length > 0;
 
 		if (!hasContent) {
@@ -426,6 +476,7 @@ class LabelManager {
 			text: ingredientsText,
 			netQuantity: this.netQuantity.value,
 			netQuantityUnit: this.netQuantityUnit.value,
+			showBlankQuantity: this.showBlankQuantity.checked,
 			allergens: allergens,
 			allergenDetails: allergenDetails,
 			...this.businessInfo,
@@ -502,7 +553,10 @@ class LabelManager {
 		// Net weight - bold, centered (same size as product name)
 		let netQuantityHtml = "";
 		if (label.netQuantity) {
-			netQuantityHtml = `<div style="text-align: center; font-weight: 700; ${largeFontSize} ${sectionMargin} ${fontFamily}">Net Wt. ${this.escapeHtml(label.netQuantity)} ${this.escapeHtml(label.netQuantityUnit || "oz")}</div>`;
+			netQuantityHtml = `<div style="text-align: center; font-weight: 700; ${largeFontSize} ${sectionMargin} ${fontFamily}">Net Wt. ${this.escapeHtml(label.netQuantity)} ${this.escapeHtml(label.netQuantityUnit || "pieces")}</div>`;
+		} else if (label.showBlankQuantity) {
+			// Show blank quantity placeholder when checkbox is checked but no value entered
+			netQuantityHtml = `<div style="text-align: center; font-weight: 700; ${largeFontSize} ${sectionMargin} ${fontFamily}">Net Wt. <span style="display: inline-block; min-width: 40px;"></span> ${this.escapeHtml(label.netQuantityUnit || "pieces")}</div>`;
 		}
 
 		// Cottage food disclaimer - bold, all caps, centered (8pt minimum)
@@ -768,8 +822,159 @@ class LabelManager {
 		return this.presets.find((preset) => preset.id === id);
 	}
 
+	// Get presets sorted according to current sort order
+	// Uses search results if a search is active, otherwise all presets
+	getSortedPresets() {
+		// Use search results if available, otherwise use all presets
+		const basePresets =
+			this.presetSearchResults !== null
+				? [...this.presetSearchResults]
+				: [...this.presets];
+
+		if (this.presetSortOrder === "az") {
+			return basePresets.sort((a, b) =>
+				a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+			);
+		} else if (this.presetSortOrder === "za") {
+			return basePresets.sort((a, b) =>
+				b.name.toLowerCase().localeCompare(a.name.toLowerCase())
+			);
+		}
+		// Default: return in original order (by createdAt from backend)
+		return basePresets;
+	}
+
+	// Set sort order and re-render presets
+	sortPresets(order) {
+		// Toggle off if clicking the same button
+		if (this.presetSortOrder === order) {
+			this.presetSortOrder = null;
+		} else {
+			this.presetSortOrder = order;
+		}
+		this.updateSortButtonStates();
+		this.renderPresets();
+	}
+
+	// Update active state of sort buttons
+	updateSortButtonStates() {
+		this.sortAzBtn.classList.toggle("active", this.presetSortOrder === "az");
+		this.sortZaBtn.classList.toggle("active", this.presetSortOrder === "za");
+	}
+
+	// Handle search input with debouncing
+	handleSearchInput(value) {
+		this.presetSearchQuery = value;
+
+		// Show/hide clear button
+		this.presetSearchClear.style.display = value.trim() ? "block" : "none";
+
+		// Clear existing debounce timer
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+		}
+
+		// Debounce the search (300ms delay)
+		this.searchDebounceTimer = setTimeout(() => {
+			this.performPresetSearch(value);
+		}, 300);
+	}
+
+	// Perform the actual search API call
+	async performPresetSearch(query) {
+		try {
+			if (!query.trim()) {
+				// Empty query - show all presets
+				this.presetSearchResults = null;
+				this.renderPresets();
+				return;
+			}
+
+			const results = await this.apiRequest(
+				`/api/presets/search?q=${encodeURIComponent(query.trim())}`,
+				{ method: "GET", silent: true }
+			);
+			this.presetSearchResults = Array.isArray(results) ? results : [];
+			this.renderPresets();
+		} catch (error) {
+			console.error("Search failed", error);
+			this.presetSearchResults = [];
+			this.renderPresets();
+		}
+	}
+
+	// Clear search input and results
+	clearPresetSearch() {
+		this.presetSearchInput.value = "";
+		this.presetSearchQuery = "";
+		this.presetSearchResults = null;
+		this.presetSearchClear.style.display = "none";
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+		}
+		this.renderPresets();
+	}
+
+	// Handle search input for Select Ingredients in Create Label tab (server-side API)
+	handleIngredientSelectSearch(value) {
+		this.ingredientSelectSearchQuery = value;
+
+		// Show/hide clear button
+		this.ingredientSelectSearchClear.style.display = value.trim()
+			? "block"
+			: "none";
+
+		// Clear existing debounce timer
+		if (this.ingredientSelectDebounceTimer) {
+			clearTimeout(this.ingredientSelectDebounceTimer);
+		}
+
+		// Debounce the search (300ms delay)
+		this.ingredientSelectDebounceTimer = setTimeout(() => {
+			this.performIngredientSelectSearch(value);
+		}, 300);
+	}
+
+	// Perform the actual search API call for ingredient select
+	async performIngredientSelectSearch(query) {
+		try {
+			if (!query.trim()) {
+				// Empty query - show all presets
+				this.ingredientSelectSearchResults = null;
+				this.renderPresetCheckboxes();
+				return;
+			}
+
+			const results = await this.apiRequest(
+				`/api/presets/search?q=${encodeURIComponent(query.trim())}`,
+				{ method: "GET", silent: true }
+			);
+			this.ingredientSelectSearchResults = Array.isArray(results)
+				? results
+				: [];
+			this.renderPresetCheckboxes();
+		} catch (error) {
+			console.error("Ingredient select search failed", error);
+			this.ingredientSelectSearchResults = [];
+			this.renderPresetCheckboxes();
+		}
+	}
+
+	// Clear ingredient select search
+	clearIngredientSelectSearch() {
+		this.ingredientSelectSearch.value = "";
+		this.ingredientSelectSearchQuery = "";
+		this.ingredientSelectSearchResults = null;
+		this.ingredientSelectSearchClear.style.display = "none";
+		if (this.ingredientSelectDebounceTimer) {
+			clearTimeout(this.ingredientSelectDebounceTimer);
+		}
+		this.renderPresetCheckboxes();
+	}
+
 	// UPDATE: Edit existing preset via API
 	async updatePreset(id, updatedData) {
+		console.log("Updating preset", id, updatedData);
 		try {
 			const updatedPreset = await this.apiRequest(
 				`/api/presets/${encodeURIComponent(id)}`,
@@ -848,6 +1053,7 @@ class LabelManager {
 		return {
 			netQuantity: this.netQuantity.value,
 			netQuantityUnit: this.netQuantityUnit.value,
+			showBlankQuantity: this.showBlankQuantity.checked,
 			allergens: this.getSelectedAllergens(),
 			allergenDetails: this.allergenDetails.value.trim(),
 			...businessData,
@@ -969,6 +1175,7 @@ class LabelManager {
 		if (mode === "manual") {
 			this.manualInputGroup.style.display = "block";
 			this.presetSelectGroup.style.display = "none";
+			this.selectedPresetsGroup.style.display = "none";
 			this.additionalIngredientsGroup.style.display = "none";
 			this.labelText.required = true;
 		} else if (mode === "preset") {
@@ -980,16 +1187,17 @@ class LabelManager {
 		}
 	}
 
-	// Get selected preset IDs from checkboxes
+	// Get selected preset IDs in user-specified order
 	getSelectedPresets() {
-		const checkboxes = this.presetCheckboxes.querySelectorAll(
-			'input[type="checkbox"]:checked'
-		);
-		return Array.from(checkboxes).map((cb) => cb.value);
+		return [...this.selectedPresetOrder];
 	}
 
 	// Set preset checkbox selection from an array of preset IDs
 	setSelectedPresets(selectedPresetIds = []) {
+		// Update the ordered list
+		this.selectedPresetOrder = [...(selectedPresetIds || [])];
+
+		// Update checkbox states
 		const checkboxes = this.presetCheckboxes.querySelectorAll(
 			'input[type="checkbox"]'
 		);
@@ -997,6 +1205,9 @@ class LabelManager {
 		checkboxes.forEach((cb) => {
 			cb.checked = idSet.has(cb.value);
 		});
+
+		// Re-render the ordered list
+		this.renderSelectedPresets();
 	}
 
 	// Collect all ingredients from selected presets and additional manual input
@@ -1008,7 +1219,13 @@ class LabelManager {
 		selectedPresetIds.forEach((presetId) => {
 			const preset = this.getPresetById(presetId);
 			if (preset) {
-				allIngredients.push(...preset.ingredients);
+				// For single ingredients (no sub-ingredients), use the preset name itself
+				if (preset.ingredients && preset.ingredients.length > 0) {
+					allIngredients.push(...preset.ingredients);
+				} else {
+					// Single ingredient - use the preset name
+					allIngredients.push(preset.name);
+				}
 			}
 		});
 
@@ -1030,9 +1247,15 @@ class LabelManager {
 		const selectedPresetIds = this.getSelectedPresets();
 		selectedPresetIds.forEach((presetId) => {
 			const preset = this.getPresetById(presetId);
-			if (preset && preset.ingredients.length > 0) {
-				const ingredientsList = preset.ingredients.join(", ");
-				parts.push(`${preset.name} (${ingredientsList})`);
+			if (preset) {
+				if (preset.ingredients && preset.ingredients.length > 0) {
+					// Multi-ingredient preset: show as "PresetName (ingredient1, ingredient2)"
+					const ingredientsList = preset.ingredients.join(", ");
+					parts.push(`${preset.name} (${ingredientsList})`);
+				} else {
+					// Single ingredient: just show the preset name
+					parts.push(preset.name);
+				}
 			}
 		});
 
@@ -1046,6 +1269,18 @@ class LabelManager {
 		return parts.join(", ");
 	}
 
+	// Handle blank quantity checkbox toggle
+	handleBlankQuantityToggle() {
+		if (this.showBlankQuantity.checked) {
+			// When "show blank" is checked, remove required and clear any error
+			this.netQuantity.required = false;
+			this.quantityError.textContent = "";
+		} else {
+			// When unchecked, re-enable required
+			this.netQuantity.required = true;
+		}
+	}
+
 	// Form validation
 	validateForm() {
 		const mode = this.creationMode.value;
@@ -1056,6 +1291,7 @@ class LabelManager {
 		textError.textContent = "";
 		presetSelectError.textContent = "";
 		this.nameError.textContent = "";
+		this.quantityError.textContent = "";
 
 		// Validate label name (always required)
 		const labelName = this.labelName.value.trim();
@@ -1067,6 +1303,13 @@ class LabelManager {
 		if (labelName.length < 2) {
 			this.nameError.textContent = "Label name must be at least 2 characters";
 			this.labelName.focus();
+			return false;
+		}
+
+		// Validate net quantity (required unless "show blank" is checked)
+		if (!this.showBlankQuantity.checked && !this.netQuantity.value.trim()) {
+			this.quantityError.textContent = "Net quantity is required";
+			this.netQuantity.focus();
 			return false;
 		}
 
@@ -1087,7 +1330,7 @@ class LabelManager {
 			const allIngredients = this.collectAllIngredients();
 			if (allIngredients.length === 0) {
 				presetSelectError.textContent =
-					"Please select at least one preset or add ingredients manually";
+					"Please select at least one ingredient or add ingredients manually";
 				return false;
 			}
 		}
@@ -1134,7 +1377,9 @@ class LabelManager {
 
 		// Populate FDA fields
 		this.netQuantity.value = label.netQuantity || "";
-		this.netQuantityUnit.value = label.netQuantityUnit || "oz";
+		this.netQuantityUnit.value = label.netQuantityUnit || "pieces";
+		this.showBlankQuantity.checked = !!label.showBlankQuantity;
+		this.handleBlankQuantityToggle(); // Update required state based on checkbox
 		this.setAllergenCheckboxes(label.allergens || []);
 		this.allergenDetails.value = label.allergenDetails || "";
 		this.cottageDisclaimer.checked = !!label.includeCottageDisclaimer;
@@ -1142,6 +1387,7 @@ class LabelManager {
 		// Clear any previous errors
 		document.getElementById("text-error").textContent = "";
 		this.nameError.textContent = "";
+		this.quantityError.textContent = "";
 
 		// Update preview to reflect the label being edited
 		this.updatePreview();
@@ -1168,6 +1414,11 @@ class LabelManager {
 		this.submitBtn.textContent = "Create Label(s)";
 		this.cancelBtn.style.display = "none";
 		this.creationMode.value = "preset";
+
+		// Clear selected presets order
+		this.selectedPresetOrder = [];
+		this.clearIngredientSelectSearch();
+
 		this.handleCreationModeChange();
 		this.labelName.value = "";
 		document.getElementById("text-error").textContent = "";
@@ -1176,7 +1427,10 @@ class LabelManager {
 
 		// Reset FDA fields (but preserve business info)
 		this.netQuantity.value = "";
-		this.netQuantityUnit.value = "oz";
+		this.netQuantityUnit.value = "pieces";
+		this.showBlankQuantity.checked = false;
+		this.netQuantity.required = true;
+		this.quantityError.textContent = "";
 		this.setAllergenCheckboxes([]);
 		this.allergenDetails.value = "";
 		this.cottageDisclaimer.checked = true;
@@ -1288,12 +1542,12 @@ class LabelManager {
 
 	// ========== PRESET FORM HANDLERS ==========
 
-	// Toggle preset form visibility
+	// Toggle ingredient form visibility
 	togglePresetForm() {
 		const isVisible = this.presetFormWrapper.style.display !== "none";
 		if (isVisible) {
 			this.presetFormWrapper.style.display = "none";
-			this.togglePresetFormBtn.textContent = "+ New Preset";
+			this.togglePresetFormBtn.textContent = "+ New Ingredient";
 		} else {
 			this.presetFormWrapper.style.display = "block";
 			this.togglePresetFormBtn.textContent = "− Hide Form";
@@ -1310,27 +1564,33 @@ class LabelManager {
 		}
 
 		const name = this.presetName.value.trim();
+		const brandName = this.presetBrandName.value.trim();
 		const ingredientsText = this.presetIngredients.value.trim();
 		const ingredients = this.parseIngredients(ingredientsText);
 
 		let success = false;
 		if (this.editingPresetId) {
-			// Update existing preset
+			// Update existing ingredient
 			success = await this.updatePreset(this.editingPresetId, {
 				name,
+				brandName,
 				ingredients,
 			});
 			if (success) {
 				this.editingPresetId = null;
-				this.showToast(`Preset "${name}" updated!`);
+				this.showToast(`Ingredient "${name}" updated!`);
 			}
 		} else {
-			// Create new preset
-			const newPreset = await this.createPreset({ name, ingredients });
+			// Create new ingredient
+			const newPreset = await this.createPreset({
+				name,
+				brandName,
+				ingredients,
+			});
 			if (newPreset) {
 				success = true;
 				this.showToast(
-					`Preset "${name}" created with ${ingredients.length} ingredients!`
+					`Ingredient "${name}" created with ${ingredients.length} sub-ingredients!`
 				);
 			}
 		}
@@ -1342,7 +1602,7 @@ class LabelManager {
 		}
 	}
 
-	// Validate preset form
+	// Validate ingredient form
 	validatePresetForm() {
 		const nameError = document.getElementById("preset-name-error");
 		const ingredientsError = document.getElementById(
@@ -1353,40 +1613,29 @@ class LabelManager {
 		ingredientsError.textContent = "";
 
 		const name = this.presetName.value.trim();
-		const ingredientsText = this.presetIngredients.value.trim();
 
 		if (name === "") {
-			nameError.textContent = "Preset name is required";
+			nameError.textContent = "Ingredient name is required";
 			this.presetName.focus();
 			return false;
 		}
 
-		if (ingredientsText === "") {
-			ingredientsError.textContent = "At least one ingredient is required";
-			this.presetIngredients.focus();
-			return false;
-		}
-
-		const ingredients = this.parseIngredients(ingredientsText);
-		if (ingredients.length === 0) {
-			ingredientsError.textContent = "Please enter valid ingredients";
-			this.presetIngredients.focus();
-			return false;
-		}
+		// Sub-ingredients are now optional - no validation required
 
 		return true;
 	}
 
-	// Edit preset - populate form
+	// Edit ingredient - populate form
 	editPreset(id) {
 		const preset = this.getPresetById(id);
 		if (preset) {
 			this.editingPresetId = id;
 			this.presetName.value = preset.name;
+			this.presetBrandName.value = preset.brandName || "";
 			this.presetIngredients.value = preset.ingredients.join(", ");
 
-			this.presetFormTitle.textContent = "Edit Preset";
-			this.presetSubmitBtn.textContent = "Update Preset";
+			this.presetFormTitle.textContent = "Edit Ingredient";
+			this.presetSubmitBtn.textContent = "Update Ingredient";
 			this.presetFormWrapper.style.display = "block";
 			this.togglePresetFormBtn.textContent = "− Hide Form";
 
@@ -1401,50 +1650,65 @@ class LabelManager {
 		this.resetPresetForm();
 	}
 
-	// Reset preset form
+	// Reset ingredient form
 	resetPresetForm() {
 		this.presetForm.reset();
-		this.presetFormTitle.textContent = "Create New Preset";
-		this.presetSubmitBtn.textContent = "Create Preset";
+		this.presetFormTitle.textContent = "Create New Ingredient";
+		this.presetSubmitBtn.textContent = "Create Ingredient";
 		this.presetFormWrapper.style.display = "none";
-		this.togglePresetFormBtn.textContent = "+ New Preset";
+		this.togglePresetFormBtn.textContent = "+ New Ingredient";
 		document.getElementById("preset-name-error").textContent = "";
 		document.getElementById("preset-ingredients-error").textContent = "";
 	}
 
-	// Delete preset with confirmation
+	// Delete ingredient with confirmation
 	async handlePresetDelete(id) {
 		const preset = this.getPresetById(id);
 		if (
 			preset &&
-			confirm(`Are you sure you want to delete the "${preset.name}" preset?`)
+			confirm(
+				`Are you sure you want to delete the "${preset.name}" ingredient?`
+			)
 		) {
 			const presetName = preset.name;
 			const success = await this.deletePreset(id);
 			if (success) {
-				// If we were editing this preset, cancel edit mode
+				// If we were editing this ingredient, cancel edit mode
 				if (this.editingPresetId === id) {
 					this.cancelPresetEdit();
 				}
 				this.renderPresets();
 				this.updatePresetDropdown();
-				this.showToast(`Preset "${presetName}" deleted`);
+				this.showToast(`Ingredient "${presetName}" deleted`);
 			}
 		}
 	}
 
 	// Render preset checkboxes for multi-selection
 	renderPresetCheckboxes() {
-		const presets = this.getAllPresets();
+		const allPresets = this.getAllPresets();
 		this.presetCheckboxes.innerHTML = "";
 
-		if (presets.length === 0) {
+		if (allPresets.length === 0) {
 			this.presetCheckboxes.innerHTML =
-				'<p class="no-presets-message">No presets available. Create a preset first.</p>';
+				'<p class="no-presets-message">No ingredients available. Create an ingredient first.</p>';
 			return;
 		}
 
-		presets.forEach((preset) => {
+		// Use server-side search results if a search is active
+		const isSearchActive = this.ingredientSelectSearchResults !== null;
+		const presetsToDisplay = isSearchActive
+			? this.ingredientSelectSearchResults
+			: allPresets;
+
+		// Show empty search message if search returned no results
+		if (isSearchActive && presetsToDisplay.length === 0) {
+			const escapedQuery = this.escapeHtml(this.ingredientSelectSearchQuery);
+			this.presetCheckboxes.innerHTML = `<p class="no-presets-message">🔍 No ingredients found matching "${escapedQuery}"</p>`;
+			return;
+		}
+
+		presetsToDisplay.forEach((preset) => {
 			const item = document.createElement("div");
 			item.className = "preset-checkbox-item";
 
@@ -1452,17 +1716,236 @@ class LabelManager {
 			checkbox.type = "checkbox";
 			checkbox.id = `preset-cb-${preset.id}`;
 			checkbox.value = preset.id;
-			// Update preview when preset selection changes
-			checkbox.addEventListener("change", () => this.updatePreview());
+			// Restore selection state from ordered list
+			checkbox.checked = this.selectedPresetOrder.includes(preset.id);
+			// Update ordered list and preview when checkbox changes
+			checkbox.addEventListener("change", (e) => {
+				if (e.target.checked) {
+					// Add to end of ordered list
+					if (!this.selectedPresetOrder.includes(preset.id)) {
+						this.selectedPresetOrder.push(preset.id);
+					}
+				} else {
+					// Remove from ordered list
+					this.selectedPresetOrder = this.selectedPresetOrder.filter(
+						(id) => id !== preset.id
+					);
+				}
+				this.renderSelectedPresets();
+				this.updatePreview();
+			});
+
+			// Build label text with optional brand name
+			const brandText = preset.brandName
+				? ` - <span class="preset-brand-label">${this.escapeHtml(preset.brandName)}</span>`
+				: "";
+
+			// Handle item count display for empty ingredients
+			const hasIngredients =
+				preset.ingredients && preset.ingredients.length > 0;
+			const itemCountText = hasIngredients
+				? `(${preset.ingredients.length} items)`
+				: "(Single)";
 
 			const label = document.createElement("label");
 			label.htmlFor = `preset-cb-${preset.id}`;
-			label.innerHTML = `${this.escapeHtml(preset.name)} <span class="preset-item-count">(${preset.ingredients.length} items)</span>`;
+			label.innerHTML = `${this.escapeHtml(preset.name)}${brandText} <span class="preset-item-count">${itemCountText}</span>`;
 
 			item.appendChild(checkbox);
 			item.appendChild(label);
 			this.presetCheckboxes.appendChild(item);
 		});
+
+		// Render the ordered list of selected presets
+		this.renderSelectedPresets();
+	}
+
+	// Render the ordered list of selected presets with reorder buttons and drag-and-drop
+	renderSelectedPresets() {
+		// Show/hide the group based on selection
+		if (this.selectedPresetOrder.length === 0) {
+			this.selectedPresetsGroup.style.display = "none";
+			return;
+		}
+
+		this.selectedPresetsGroup.style.display = "block";
+		this.selectedPresetsList.innerHTML = "";
+
+		this.selectedPresetOrder.forEach((presetId, index) => {
+			const preset = this.getPresetById(presetId);
+			if (!preset) return;
+
+			const item = document.createElement("div");
+			item.className = "selected-preset-item";
+			item.dataset.id = preset.id;
+
+			// Enable drag-and-drop
+			item.draggable = true;
+			item.addEventListener("dragstart", (e) =>
+				this.handleDragStart(e, preset.id)
+			);
+			item.addEventListener("dragover", (e) => this.handleDragOver(e));
+			item.addEventListener("dragenter", (e) => this.handleDragEnter(e));
+			item.addEventListener("dragleave", (e) => this.handleDragLeave(e));
+			item.addEventListener("drop", (e) => this.handleDrop(e, preset.id));
+			item.addEventListener("dragend", (e) => this.handleDragEnd(e));
+
+			// Drag handle
+			const dragHandle = document.createElement("span");
+			dragHandle.className = "drag-handle";
+			dragHandle.innerHTML = "⋮⋮";
+			dragHandle.title = "Drag to reorder";
+
+			// Create reorder buttons container
+			const reorderBtns = document.createElement("div");
+			reorderBtns.className = "reorder-buttons";
+
+			// Up button
+			const upBtn = document.createElement("button");
+			upBtn.type = "button";
+			upBtn.className = "btn-reorder btn-reorder-up";
+			upBtn.innerHTML = "↑";
+			upBtn.title = "Move up";
+			upBtn.disabled = index === 0;
+			upBtn.addEventListener("click", () => this.movePresetUp(preset.id));
+
+			// Down button
+			const downBtn = document.createElement("button");
+			downBtn.type = "button";
+			downBtn.className = "btn-reorder btn-reorder-down";
+			downBtn.innerHTML = "↓";
+			downBtn.title = "Move down";
+			downBtn.disabled = index === this.selectedPresetOrder.length - 1;
+			downBtn.addEventListener("click", () => this.movePresetDown(preset.id));
+
+			reorderBtns.appendChild(upBtn);
+			reorderBtns.appendChild(downBtn);
+
+			// Preset name with optional brand
+			const nameSpan = document.createElement("span");
+			nameSpan.className = "selected-preset-name";
+			const brandText = preset.brandName
+				? ` - <span class="preset-brand-label">${this.escapeHtml(preset.brandName)}</span>`
+				: "";
+			nameSpan.innerHTML = `${this.escapeHtml(preset.name)}${brandText}`;
+
+			// Remove button
+			const removeBtn = document.createElement("button");
+			removeBtn.type = "button";
+			removeBtn.className = "btn-remove-preset";
+			removeBtn.innerHTML = "×";
+			removeBtn.title = "Remove ingredient";
+			removeBtn.addEventListener("click", () =>
+				this.removePresetFromOrder(preset.id)
+			);
+
+			item.appendChild(dragHandle);
+			item.appendChild(reorderBtns);
+			item.appendChild(nameSpan);
+			item.appendChild(removeBtn);
+			this.selectedPresetsList.appendChild(item);
+		});
+	}
+
+	// Drag-and-drop handlers for reordering selected presets
+	handleDragStart(e, presetId) {
+		this.draggedPresetId = presetId;
+		e.target.classList.add("dragging");
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData("text/plain", presetId);
+	}
+
+	handleDragOver(e) {
+		e.preventDefault();
+		e.dataTransfer.dropEffect = "move";
+	}
+
+	handleDragEnter(e) {
+		e.preventDefault();
+		const item = e.target.closest(".selected-preset-item");
+		if (item && item.dataset.id !== this.draggedPresetId) {
+			item.classList.add("drag-over");
+		}
+	}
+
+	handleDragLeave(e) {
+		const item = e.target.closest(".selected-preset-item");
+		if (item) {
+			item.classList.remove("drag-over");
+		}
+	}
+
+	handleDrop(e, targetPresetId) {
+		e.preventDefault();
+		const item = e.target.closest(".selected-preset-item");
+		if (item) {
+			item.classList.remove("drag-over");
+		}
+
+		if (this.draggedPresetId && this.draggedPresetId !== targetPresetId) {
+			// Reorder the array
+			const fromIndex = this.selectedPresetOrder.indexOf(this.draggedPresetId);
+			const toIndex = this.selectedPresetOrder.indexOf(targetPresetId);
+
+			if (fromIndex !== -1 && toIndex !== -1) {
+				// Remove from old position and insert at new position
+				this.selectedPresetOrder.splice(fromIndex, 1);
+				this.selectedPresetOrder.splice(toIndex, 0, this.draggedPresetId);
+				this.renderSelectedPresets();
+				this.updatePreview();
+			}
+		}
+	}
+
+	handleDragEnd(e) {
+		e.target.classList.remove("dragging");
+		this.draggedPresetId = null;
+		// Clean up any remaining drag-over classes
+		this.selectedPresetsList.querySelectorAll(".drag-over").forEach((el) => {
+			el.classList.remove("drag-over");
+		});
+	}
+
+	// Move preset up in the order
+	movePresetUp(id) {
+		const index = this.selectedPresetOrder.indexOf(id);
+		if (index > 0) {
+			// Swap with previous item
+			[this.selectedPresetOrder[index - 1], this.selectedPresetOrder[index]] = [
+				this.selectedPresetOrder[index],
+				this.selectedPresetOrder[index - 1],
+			];
+			this.renderSelectedPresets();
+			this.updatePreview();
+		}
+	}
+
+	// Move preset down in the order
+	movePresetDown(id) {
+		const index = this.selectedPresetOrder.indexOf(id);
+		if (index < this.selectedPresetOrder.length - 1) {
+			// Swap with next item
+			[this.selectedPresetOrder[index], this.selectedPresetOrder[index + 1]] = [
+				this.selectedPresetOrder[index + 1],
+				this.selectedPresetOrder[index],
+			];
+			this.renderSelectedPresets();
+			this.updatePreview();
+		}
+	}
+
+	// Remove preset from ordered selection
+	removePresetFromOrder(id) {
+		this.selectedPresetOrder = this.selectedPresetOrder.filter(
+			(presetId) => presetId !== id
+		);
+		// Uncheck the corresponding checkbox
+		const checkbox = document.getElementById(`preset-cb-${id}`);
+		if (checkbox) {
+			checkbox.checked = false;
+		}
+		this.renderSelectedPresets();
+		this.updatePreview();
 	}
 
 	// Update preset dropdown options (legacy - now uses checkboxes)
@@ -1536,7 +2019,11 @@ class LabelManager {
 		if (label.netQuantity) {
 			netQuantityStr = `<div class="label-quantity"><strong>Net Wt.</strong> ${this.escapeHtml(
 				label.netQuantity
-			)} ${this.escapeHtml(label.netQuantityUnit || "oz")}</div>`;
+			)} ${this.escapeHtml(label.netQuantityUnit || "pieces")}</div>`;
+		} else if (label.showBlankQuantity) {
+			netQuantityStr = `<div class="label-quantity"><strong>Net Wt.</strong> <span style="display: inline-block; min-width: 40px;"></span> ${this.escapeHtml(
+				label.netQuantityUnit || "pieces"
+			)}</div>`;
 		}
 
 		// Cottage food disclaimer
@@ -1635,8 +2122,10 @@ class LabelManager {
 
 		if (label.netQuantity) {
 			lines.push(
-				`Net Wt. ${label.netQuantity} ${label.netQuantityUnit || "oz"}`
+				`Net Wt. ${label.netQuantity} ${label.netQuantityUnit || "pieces"}`
 			);
+		} else if (label.showBlankQuantity) {
+			lines.push(`Net Wt.      ${label.netQuantityUnit || "pieces"}`);
 		}
 
 		if (label.includeCottageDisclaimer) {
@@ -1668,25 +2157,37 @@ class LabelManager {
 
 	// Render all presets to the DOM
 	renderPresets() {
-		const presets = this.getAllPresets();
-
-		// Show/hide empty state
-		if (presets.length === 0) {
-			this.presetsEmptyState.style.display = "block";
-			this.presetsList.style.display = "none";
-		} else {
-			this.presetsEmptyState.style.display = "none";
-			this.presetsList.style.display = "grid";
-		}
+		const allPresets = this.getAllPresets();
+		const sortedPresets = this.getSortedPresets();
+		const isSearchActive = this.presetSearchResults !== null;
 
 		// Clear container
 		this.presetsList.innerHTML = "";
 
-		// Render each preset
-		presets.forEach((preset) => {
-			const presetCard = this.createPresetCard(preset);
-			this.presetsList.appendChild(presetCard);
-		});
+		// Handle empty states
+		if (allPresets.length === 0 && !isSearchActive) {
+			// No presets at all
+			this.presetsEmptyState.innerHTML =
+				"<p>📦 No ingredients yet. Create your first ingredient above!</p>";
+			this.presetsEmptyState.style.display = "block";
+			this.presetsList.style.display = "none";
+		} else if (isSearchActive && sortedPresets.length === 0) {
+			// Search returned no results
+			const escapedQuery = this.escapeHtml(this.presetSearchQuery);
+			this.presetsEmptyState.innerHTML = `<p>🔍 No ingredients found matching "${escapedQuery}"</p>`;
+			this.presetsEmptyState.style.display = "block";
+			this.presetsList.style.display = "none";
+		} else {
+			// Show presets
+			this.presetsEmptyState.style.display = "none";
+			this.presetsList.style.display = "grid";
+
+			// Render each preset in sorted order
+			sortedPresets.forEach((preset) => {
+				const presetCard = this.createPresetCard(preset);
+				this.presetsList.appendChild(presetCard);
+			});
+		}
 	}
 
 	// Create preset card element
@@ -1694,22 +2195,40 @@ class LabelManager {
 		const card = document.createElement("div");
 		card.className = "preset-card";
 
-		const ingredientsList = preset.ingredients
-			.slice(0, 3)
-			.map((ing) => this.escapeHtml(ing))
-			.join(", ");
-		const moreText =
-			preset.ingredients.length > 3
-				? ` +${preset.ingredients.length - 3} more`
-				: "";
+		// Handle ingredients display - show "Single ingredient" if no sub-ingredients
+		const hasIngredients = preset.ingredients && preset.ingredients.length > 0;
+		let ingredientsDisplay = "";
+		let itemCountText = "";
+
+		if (hasIngredients) {
+			const ingredientsList = preset.ingredients
+				.slice(0, 3)
+				.map((ing) => this.escapeHtml(ing))
+				.join(", ");
+			const moreText =
+				preset.ingredients.length > 3
+					? ` +${preset.ingredients.length - 3} more`
+					: "";
+			ingredientsDisplay = `${ingredientsList}${moreText}`;
+			itemCountText = `${preset.ingredients.length} items`;
+		} else {
+			ingredientsDisplay = `<em class="no-sub-ingredients">Single ingredient</em>`;
+			itemCountText = "Single";
+		}
+
+		// Only show brand name line if it exists
+		const brandNameHtml = preset.brandName
+			? `<div class="preset-brand-name">Brand: ${this.escapeHtml(preset.brandName)}</div>`
+			: "";
 
 		card.innerHTML = `
             <div class="preset-card-header">
                 <span class="preset-name">${this.escapeHtml(preset.name)}</span>
-                <span class="preset-count">${preset.ingredients.length} items</span>
+                <span class="preset-count">${itemCountText}</span>
             </div>
+            ${brandNameHtml}
             <div class="preset-ingredients">
-                ${ingredientsList}${moreText}
+                ${ingredientsDisplay}
             </div>
             <div class="preset-actions">
                 <button class="btn btn-edit btn-small" data-id="${preset.id}">

@@ -1,6 +1,6 @@
+require("dotenv").config();
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
-const serverless = require("serverless-http");
 
 const app = express();
 const MONGODB_URI =
@@ -8,37 +8,43 @@ const MONGODB_URI =
 const DB_NAME = process.env.MONGODB_DB || "test";
 
 let cachedDb = null;
+
+function withTimeout(promise, ms) {
+	const timeout = new Promise((_, reject) =>
+		setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
+	);
+	return Promise.race([promise, timeout]);
+}
+
 async function getDb() {
 	if (cachedDb) {
 		return cachedDb;
 	}
+	console.log("Connecting to MongoDB...");
 	const client = new MongoClient(MONGODB_URI, {
 		serverSelectionTimeoutMS: 5000,
-		connectTimeoutMS: 10000,
+		connectTimeoutMS: 5000,
 	});
-	await client.connect();
+	await withTimeout(client.connect(), 8000);
+	console.log("MongoDB connected");
 	cachedDb = client.db(DB_NAME);
 	return cachedDb;
 }
 
 const defaultPresets = [
 	{
-		id: "default-1",
 		name: "Baking Basics",
 		ingredients: ["Flour", "Sugar", "Salt", "Baking Powder", "Baking Soda"],
 	},
 	{
-		id: "default-2",
 		name: "Spices",
 		ingredients: ["Cinnamon", "Vanilla", "Nutmeg", "Ginger", "Cloves"],
 	},
 	{
-		id: "default-3",
 		name: "Dairy",
 		ingredients: ["Butter", "Milk", "Eggs", "Heavy Cream", "Sour Cream"],
 	},
 	{
-		id: "default-4",
 		name: "Nuts & Seeds",
 		ingredients: [
 			"Almonds",
@@ -49,7 +55,6 @@ const defaultPresets = [
 		],
 	},
 	{
-		id: "default-5",
 		name: "Chocolate",
 		ingredients: [
 			"Cocoa Powder",
@@ -59,7 +64,6 @@ const defaultPresets = [
 		],
 	},
 	{
-		id: "default-6",
 		name: "Fruits",
 		ingredients: ["Blueberries", "Strawberries", "Bananas", "Apples", "Lemons"],
 	},
@@ -82,6 +86,26 @@ function stripMongoId(doc) {
 	const { _id, ...rest } = doc;
 	return { id: _id.toString(), ...rest };
 }
+
+// Helper for backward compatibility - support both ObjectId and legacy custom id
+function getPresetQuery(id) {
+	try {
+		// Try to parse as ObjectId (24 char hex string)
+		if (ObjectId.isValid(id) && new ObjectId(id).toString() === id) {
+			return { _id: new ObjectId(id) };
+		}
+	} catch {
+		// Not a valid ObjectId, fall through to legacy query
+	}
+	// Fall back to legacy custom id field
+	return { id: id };
+}
+
+// Test endpoint
+app.get("/api/test", (req, res) => {
+	console.log("Test endpoint hit");
+	res.json({ ok: true, time: new Date().toISOString() });
+});
 
 // ===== LABELS =====
 app.get("/api/labels", async (req, res) => {
@@ -144,9 +168,8 @@ app.put("/api/labels/:id", async (req, res) => {
 				{ $set: updates },
 				{ returnDocument: "after" }
 			);
-		if (!result.value)
-			return res.status(404).json({ error: "Label not found" });
-		res.json(stripMongoId(result.value));
+		if (!result) return res.status(404).json({ error: "Label not found" });
+		res.json(stripMongoId(result));
 	} catch (err) {
 		console.error("PUT /api/labels/:id error", err);
 		res.status(500).json({ error: "Failed to update label" });
@@ -178,7 +201,8 @@ app.get("/api/presets", async (req, res) => {
 			const now = new Date().toISOString();
 			const docs = defaultPresets.map((p) => ({ ...p, createdAt: now }));
 			await col.insertMany(docs);
-			presets = docs;
+			// Re-query to get the inserted documents with their _ids
+			presets = await col.find({}).sort({ createdAt: 1 }).toArray();
 		}
 		res.json(presets.map(stripMongoId));
 	} catch (err) {
@@ -187,18 +211,48 @@ app.get("/api/presets", async (req, res) => {
 	}
 });
 
+// Search presets by name, brandName, or ingredients
+app.get("/api/presets/search", async (req, res) => {
+	try {
+		const db = await getDb();
+		const col = db.collection("presets");
+		const query = req.query.q || "";
+
+		if (!query.trim()) {
+			// Return all presets if no search query
+			const presets = await col.find({}).sort({ createdAt: 1 }).toArray();
+			return res.json(presets.map(stripMongoId));
+		}
+
+		// Case-insensitive partial match on name, brandName, or ingredients array
+		const regex = { $regex: query.trim(), $options: "i" };
+		const presets = await col
+			.find({
+				$or: [{ name: regex }, { brandName: regex }, { ingredients: regex }],
+			})
+			.sort({ createdAt: 1 })
+			.toArray();
+
+		res.json(presets.map(stripMongoId));
+	} catch (err) {
+		console.error("GET /api/presets/search error", err);
+		res.status(500).json({ error: "Failed to search presets" });
+	}
+});
+
 app.post("/api/presets", async (req, res) => {
 	try {
 		const db = await getDb();
 		const input = req.body || {};
 		const preset = {
-			id: input.id || Date.now().toString(),
 			name: input.name || "",
+			brandName: input.brandName || "",
 			ingredients: input.ingredients || [],
 			createdAt: new Date().toISOString(),
 		};
-		await db.collection("presets").insertOne(preset);
-		res.status(201).json(preset);
+		const result = await db.collection("presets").insertOne(preset);
+		// Return the preset with the MongoDB-generated _id converted to id
+		res.status(201).json(stripMongoId({ _id: result.insertedId, ...preset }));
 	} catch (err) {
 		console.error("POST /api/presets error", err);
 		res.status(500).json({ error: "Failed to create preset" });
@@ -212,16 +266,16 @@ app.put("/api/presets/:id", async (req, res) => {
 			...(req.body || {}),
 			updatedAt: new Date().toISOString(),
 		};
+		// Remove id fields that shouldn't be updated
+		delete updates._id;
+		delete updates.id;
+		// Use backward-compatible query (ObjectId or legacy custom id)
+		const query = getPresetQuery(req.params.id);
 		const result = await db
 			.collection("presets")
-			.findOneAndUpdate(
-				{ id: req.params.id },
-				{ $set: updates },
-				{ returnDocument: "after" }
-			);
-		if (!result.value)
-			return res.status(404).json({ error: "Preset not found" });
-		res.json(stripMongoId(result.value));
+			.findOneAndUpdate(query, { $set: updates }, { returnDocument: "after" });
+		if (!result) return res.status(404).json({ error: "Preset not found" });
+		res.json(stripMongoId(result));
 	} catch (err) {
 		console.error("PUT /api/presets/:id error", err);
 		res.status(500).json({ error: "Failed to update preset" });
@@ -231,9 +285,9 @@ app.put("/api/presets/:id", async (req, res) => {
 app.delete("/api/presets/:id", async (req, res) => {
 	try {
 		const db = await getDb();
-		const result = await db
-			.collection("presets")
-			.deleteOne({ id: req.params.id });
+		// Use backward-compatible query (ObjectId or legacy custom id)
+		const query = getPresetQuery(req.params.id);
+		const result = await db.collection("presets").deleteOne(query);
 		if (!result.deletedCount)
 			return res.status(404).json({ error: "Preset not found" });
 		res.json({ success: true });
@@ -285,4 +339,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = serverless(app);
+module.exports = app;
